@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <GL/gl.h>
 #include <AS3/AS3.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 
 
@@ -538,7 +539,7 @@ extern void glPushMatrix (void)
 extern void glViewport (GLint x, GLint y, GLsizei width, GLsizei height)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.send('glViewport not yet implemented.');");
+               "GLAPI.instance.glViewport(%0, %1, %2, %3);\n" :: "r"(x), "r"(y), "r"(width), "r"(height));
 }
 
 extern void glBlendFunc (GLenum sfactor, GLenum dfactor)
@@ -642,6 +643,9 @@ extern void glGenTextures (GLsizei n, GLuint *textures)
     inline_as3("import GLS3D.GLAPI;\n"\
                "var result:uint = GLAPI.instance.glGenTextures(%0);\n" :: "r"(n));
     AS3_GetScalarFromVar(firstIndex, result);
+
+
+    fprintf(stderr, "[IMPLEMENTED] glGenTextures: asked to generate %d textures, generated with id = %d ++", n, firstIndex);
 
     for (i = 0; i < n; i++) {
         textures[i] = firstIndex + i;
@@ -747,11 +751,11 @@ extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoi
 	_glDrawPrimitives<true>(0, count, indices, mode, type);
 }
 
-extern void glDrawArrays (GLenum mode, GLint first, GLsizei count)
+/*extern void glDrawArrays (GLenum mode, GLint first, GLsizei count)
 {
 	// Draw NonIndexed Primitive
 	_glDrawPrimitives<false>(first, count, NULL, mode, GL_UNSIGNED_INT);
-}
+}*/
 
 extern void glGenBuffers (GLsizei n, GLuint *buffers)
 {
@@ -1223,7 +1227,7 @@ extern void glAlphaFunc (GLenum func, GLclampf ref)
 #include <stdio.h>
 #include <GL/gl.h>
 
-static int stubMsg = 0;
+static int stubMsg = 1;
 extern void glAccum (GLenum op, GLfloat value)
 {
     if(stubMsg) {
@@ -4205,25 +4209,107 @@ extern void glVertexAttrib4usv (GLuint index, const GLushort *v)
     }
 }
 
-extern void glVertexAttribPointer (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid *pointer)
-{
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertexAttribPointer...\n");
+/*
+   Very much of clutch!
+ */
+
+struct VertexAttribute {
+  GLuint index;
+  GLint size;
+  GLenum type;
+  GLsizei stride;
+  const GLvoid *pointer;
+};
+
+static VertexAttribute attributes[8];
+static bool attributeStatuses[8] = { 0 };
+
+/*
+   Uploads the needed number of data using attribute settings.
+ */
+static void uploadVertexData(VertexAttribute attribute, GLint first, GLsizei count) {
+    int elementSize = 1;
+
+    // compute one element size, taking into account its type
+    if (attribute.type == GL_FLOAT) { elementSize *= sizeof(GLfloat); }
+    if (attribute.type == GL_SHORT) { elementSize *= sizeof(GLshort); }
+    if (attribute.type == GL_UNSIGNED_BYTE) { elementSize *= sizeof(GLubyte); }
+    if (attribute.type == GL_UNSIGNED_SHORT) { elementSize *= sizeof(GLushort); }
+
+    // and the number of components
+    elementSize *= attribute.size;
+
+    // stride is byte offset between data items. however, it can be 0, meaning items are
+    // packed in array.
+    if (attribute.stride == 0) {
+      attribute.stride = elementSize;
     }
+
+    // allocate memory
+    // FIXME pre-allocate + re-use
+    int bufferByteSize = (elementSize * count);
+    uint8_t *buffer = new uint8_t[bufferByteSize];
+
+    uint8_t *dataPointer = (uint8_t *)attribute.pointer + (first * (elementSize + attribute.stride));
+    uint8_t *bufferPointer = buffer;
+
+    // little forchick to copy the data
+    for(int i = 0; i < count; i++) {
+      memcpy(bufferPointer, dataPointer, elementSize);
+
+      dataPointer += attribute.stride;
+      bufferPointer += elementSize;
+    }
+
+    // no more forchick - pass dat data!
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.setVertexBuffer(%0, %1, ram, %2, %3, %4);\n" :: "r"(attribute.index), "r"(attribute.type), "r"(buffer), "r"(bufferByteSize), "r"(elementSize));
+
+    delete [] buffer;
 }
 
-extern void glEnableVertexAttribArray (GLuint index)
+extern void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid *pointer)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glEnableVertexAttribArray...\n");
+    attributes[index].index = index;
+    attributes[index].size = size;
+    attributes[index].type = type;
+    attributes[index].stride = stride;
+    attributes[index].pointer = pointer;
+}
+
+extern void glDrawArrays(GLenum mode, GLint first, GLsizei count)
+{
+    if (mode != GL_TRIANGLES)
+    {
+        fprintf(stderr, "Problem officer: We don't support anything but triangles, but you gave us shit = %d\n", mode);
+        return; 
     }
+
+    for (int index = 0; index < 8; index++) {
+        inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.clearVertexBuffer(%0);\n" :: "r"(index));        
+    }
+
+    for(int index = 0; index < 8; index++) {
+      if (attributeStatuses[index]) {
+        uploadVertexData(attributes[index], first, count);
+      }
+    }
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glDrawTriangles(%0);\n" :: "r"(count));
+}
+
+extern void glEnableVertexAttribArray(GLuint index)
+{
+    attributeStatuses[index] = true;
+    // fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray");
 }
 
 extern void glDisableVertexAttribArray (GLuint index)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glDisableVertexAttribArray...\n");
-    }
+    attributeStatuses[index] = false;
+    // fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray");
 }
 
 extern void glGetVertexAttribdv (GLuint index, GLenum pname, GLdouble *params)
@@ -4254,11 +4340,13 @@ extern void glGetVertexAttribPointerv (GLuint index, GLenum pname, GLvoid* *poin
     }
 }
 
-extern GLuint glCreateShader (GLenum)
+extern GLuint glCreateShader (GLenum type)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glCreateShader...\n");
-    }
+    GLuint id = 0;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glCreateShader(%0);\n" :: "r"(type));
+    AS3_GetScalarFromVar(id, result);
+    return id;
 }
     
 extern void glDeleteShader (GLuint shader)
@@ -4277,44 +4365,41 @@ extern void glDetachShader (GLuint program, GLuint shader)
 
 extern void glShaderSource (GLuint shader, GLsizei count, const GLchar* *string, const GLint *length)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glShaderSource...\n");
-    }
+  inline_as3("import GLS3D.GLAPI;\n"\
+    "GLAPI.instance.glShaderSource(%0, CModule.readString(%1, %2))\n" :: "r"(shader), "r"(string[0]), "r"(strlen(string[0])));
 }
 
 extern void glCompileShader (GLuint shader)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glCompileShader...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glCompileShader(%0);\n" :: "r"(shader));
 }
 
 extern GLuint glCreateProgram (void)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glCreateProgram...\n");
-    }
+    GLuint id = 0;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glCreateProgram();\n");
+    AS3_GetScalarFromVar(id, result);
+    return id;
 }
 
 extern void glAttachShader (GLuint program, GLuint shader)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glAttachShader...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glAttachShader(%0, %1);\n" :: "r"(program), "r"(shader));
 }
 
 extern void glLinkProgram (GLuint program)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glLinkProgram...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glLinkProgram(%0);\n" :: "r"(program));
 }
 
 extern void glUseProgram (GLuint program)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUseProgram...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glUseProgram(%0);\n" :: "r"(program));
 }
 
 extern void glDeleteProgram (GLuint program)
@@ -4333,58 +4418,50 @@ extern void glValidateProgram (GLuint program)
 
 extern void glUniform1f (GLint location, GLfloat v0)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform1f...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(0), "r"(0), "r"(0));
 }
 
 extern void glUniform2f (GLint location, GLfloat v0, GLfloat v1)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform2f...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(v1), "r"(0), "r"(0));
 }
 
 extern void glUniform3f (GLint location, GLfloat v0, GLfloat v1, GLfloat v2)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform3f...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(v1), "r"(v2), "r"(0));
 }
 
 extern void glUniform4f (GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform4f...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(v1), "r"(v2), "r"(v3));
 }
 
 extern void glUniform1i (GLint location, GLint v0)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform1i...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(0), "r"(0), "r"(0));
 }
 
 extern void glUniform2i (GLint location, GLint v0, GLint v1)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform2i...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(v1), "r"(0), "r"(0));
 }
 
 extern void glUniform3i (GLint location, GLint v0, GLint v1, GLint v2)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform3i...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(v1), "r"(v2), "r"(0));
 }
 
 extern void glUniform4i (GLint location, GLint v0, GLint v1, GLint v2, GLint v3)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform4i...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(v0), "r"(v1), "r"(v2), "r"(v3));
 }
 
 extern void glUniform1fv (GLint location, GLsizei count, const GLfloat *value)
@@ -4459,22 +4536,31 @@ extern void glUniformMatrix3fv (GLint location, GLsizei count, GLboolean transpo
 
 extern void glUniformMatrix4fv (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniformMatrix4fv...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glUniformMatrix4f(%0, %1,    %2, %3, %4, %5,  %6, %7, %8, %9,  %10, %11, %12, %13,  %14, %15, %16, %17)\n" :: "r"(location), "r"(transpose), "r"(value[0]), "r"(value[1]), "r"(value[2]), "r"(value[3]), "r"(value[4]), "r"(value[5]), "r"(value[6]), "r"(value[7]), "r"(value[8]), "r"(value[9]), "r"(value[10]), "r"(value[11]), "r"(value[12]), "r"(value[13]), "r"(value[14]), "r"(value[15]));
 }
 
 extern void glGetShaderiv (GLuint shader, GLenum pname, GLint *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glGetShaderiv...\n");
+    // Shader compiler errors are currently not supported
+    if (pname == GL_INFO_LOG_LENGTH) {
+      *params = 0;
+    }
+
+    if (pname == GL_COMPILE_STATUS) {
+      *params = GL_TRUE;
     }
 }
 
 extern void glGetProgramiv (GLuint program, GLenum pname, GLint *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glGetProgramiv...\n");
+    // Program link errors are currently not supported
+    if (pname == GL_INFO_LOG_LENGTH) {
+      *params = 0;
+    }
+
+    if (pname == GL_LINK_STATUS) {
+      *params = GL_TRUE;
     }
 }
 
@@ -4520,11 +4606,15 @@ extern void glGetUniformiv (GLuint program, GLint location, GLint *params)
     }
 }
 
-extern int glGetUniformLocation (GLuint, const GLchar*)
+extern int glGetUniformLocation (GLuint program, const GLchar *name)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glGetUniformLocation...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "var result:uint = GLAPI.instance.glGetUniformLocation(%0, CModule.readString(%1, %2))\n" :: "r"(program), "r"(name), "r"(strlen(name)));
+
+    GLuint r = 0;
+    AS3_GetScalarFromVar(r, result);
+
+    return r;
 }
 
 extern void glGetShaderSource (GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *source)
@@ -4543,9 +4633,8 @@ extern int glGetAttribLocation (GLuint program, const GLchar* name)
     
 extern void glBindAttribLocation (GLuint program, GLuint index, const GLchar *name)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glBindAttribLocation...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glBindAttribLocation(%0, %1, CModule.readString(%2, %3))\n" :: "r"(program), "r"(index), "r"(name), "r"(strlen(name)));
 }
 
 extern void glGetActiveAttrib (GLuint program, GLuint index, GLsizei bufSize, GLsizei *length, GLint *size, GLenum *type, GLchar *name)
@@ -4618,10 +4707,17 @@ extern void glUniformMatrix4x3fv (GLint location, GLsizei count, GLboolean trans
     }
 }
 
-extern void glGenFramebuffers (GLsizei, GLuint*)
+extern void glGenFramebuffers (GLsizei n, GLuint *framebuffers)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glGenFramebuffers...\n");
+    int i;
+    unsigned firstIndex;
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glGenFramebuffers(%0);\n" :: "r"(n));
+    AS3_GetScalarFromVar(firstIndex, result);
+
+    for (i = 0; i < n; i++) {
+        framebuffers[i] = firstIndex + i;
     }
 }
 
@@ -4634,9 +4730,8 @@ extern void glGetRenderbufferParameteriv (GLenum target, GLenum pname, GLint* pa
 
 extern void glBindFramebuffer (GLenum target, GLuint framebuffer)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glBindFramebuffer...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glBindFramebuffer(%0, %1);\n" : : "r"(target), "r"(framebuffer));
 }
 
 extern GLenum glCheckFramebufferStatus (GLenum target)
@@ -4644,6 +4739,8 @@ extern GLenum glCheckFramebufferStatus (GLenum target)
     if(stubMsg) {
         fprintf(stderr, "stubbed glCheckFramebufferStatus...\n");
     }
+
+    return GL_FRAMEBUFFER_COMPLETE;
 }
 
 extern void glDeleteFramebuffers (GLsizei n, const GLuint* framebuffers)
@@ -4655,8 +4752,42 @@ extern void glDeleteFramebuffers (GLsizei n, const GLuint* framebuffers)
 
 extern void glFramebufferTexture2D (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
 {
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glFramebufferTexture2D(%0, %1, %2, %3, %4);\n" : : "r"(target), "r"(attachment), "r"(textarget), "r"(texture), "r"(level));
+}
+
+extern void glGenRenderbuffers (GLsizei n, GLuint *renderbuffers)
+{
     if(stubMsg) {
-        fprintf(stderr, "stubbed glFramebufferTexture2D...\n");
+        fprintf(stderr, "stubbed glGenRenderbuffers...\n");
+    }
+}
+
+extern void glBindRenderbuffer (GLenum target, GLuint renderbuffer)
+{
+    if(stubMsg) {
+        fprintf(stderr, "stubbed glBindRenderbuffer...\n");
+    }
+}
+
+extern void glRenderbufferStorage (GLenum target, GLenum internalformat, GLsizei width, GLsizei height)
+{
+    if(stubMsg) {
+        fprintf(stderr, "stubbed glRenderbufferStorage...\n");
+    }
+}
+
+extern void glFramebufferRenderbuffer (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)
+{
+    if(stubMsg) {
+        fprintf(stderr, "stubbed glFramebufferRenderbuffer...\n");
+    }
+}
+
+extern void glGenerateMipmap (GLenum target)
+{
+    if(stubMsg) {
+        fprintf(stderr, "stubbed glGenerateMipmap...\n");
     }
 }
 

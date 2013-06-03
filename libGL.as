@@ -46,7 +46,7 @@ package GLS3D
 
     import com.adobe.utils.*;
     import com.adobe.utils.macro.*;
-    import com.adobe.flascc.CModule; 
+    import com.adobe.flascc.CModule;
 
     // Linker trickery
     [Csym("D", "___libgl_abc__", ".data")]
@@ -60,6 +60,7 @@ package GLS3D
         public var disableCulling:Boolean = false
         public var disableBlending:Boolean = false
         public var log:Object = null; // new TraceLog();
+        public var log2:Object = null; // new TraceLog();
         public var context:Context3D
         public var genOnBind:Boolean = false
 
@@ -99,7 +100,28 @@ package GLS3D
         private var frontFaceClockWise:Boolean = false // we default to CCW
         private var glCullMode:uint = GL_BACK
         private var lightingStates:Vector.<LightingState> = new Vector.<LightingState>()
+
+        private var activeTexture:TextureInstance
+        private var textures:Dictionary = new Dictionary()
         private var texID:uint = 1 // so we have 0 as non-valid id
+
+        private var activeFramebuffer:FramebufferInstance
+        private var framebuffers:Dictionary = new Dictionary()
+        private var framebufferID:uint = 1
+
+        private var shaders:Dictionary = new Dictionary()
+        private var shaderID:uint = 1
+
+        private var programs:Dictionary = new Dictionary()
+        private var programID:uint = 1
+        private var activeProgramInstance:ProgramInstance = null;
+
+        private var variableHandles:Dictionary = new Dictionary()
+        private var variableID:uint = 1
+
+        private var vertexBuffers:Vector.<VertexBuffer3D> = new <VertexBuffer3D>[];
+        private var indexBuffer:VertexBuffer3D = null;
+
         private var shininessVec:Vector.<Number> = new <Number>[0.0, 0.0, 0.0, 0.0]
         private var globalAmbient:Vector.<Number> = new <Number>[0.2, 0.2, 0.2, 1]
         private var polygonOffsetValue:Number = -0.0005
@@ -141,12 +163,10 @@ package GLS3D
         private var vertexAttributesDirty:Boolean = true
         private var activeCommandList:CommandList = null
         private var commandLists:Vector.<CommandList> = null
-        private var textures:Dictionary = new Dictionary()
         private var vertexBufferAttributes:Vector.<VertexBufferAttribute> = new Vector.<VertexBufferAttribute>(8)
         private var textureUnits:Array = new Array(32)
         private var activeProgram:ProgramInstance
         private var activeTextureUnit:uint = 0
-        private var activeTexture:TextureInstance
         private var textureSamplers:Vector.<TextureInstance> = new Vector.<TextureInstance>(8)
         private var textureSamplerIDs:Vector.<uint> = new Vector.<uint>(8)
         private var vertexBufferObjects:Vector.<VertexBuffer3D> = new Vector.<VertexBuffer3D>()
@@ -163,6 +183,7 @@ package GLS3D
         private var contextMaterial:Material = new Material(true)
         private var cubeVertexData:Vector.<Number>;
         private var cubeVertexBuffer:VertexBuffer3D = null;
+        private var agalAssembler:AGALMiniAssembler = null
 
         public static function init(context:Context3D, log:Object, stage:Stage):void
         {
@@ -1727,7 +1748,10 @@ package GLS3D
             _stage = stage
 
             //this.log = new TraceLog()
+            //this.log2 = new TraceLog()
             this.context = context
+
+            agalAssembler = new AGALMiniAssembler()
 
             // id zero is null
             vertexBufferObjects.push(null);
@@ -1818,18 +1842,25 @@ package GLS3D
         {
             textureSamplerIDs[activeTextureUnit] = texture
 
-            if(genOnBind){
+            //if(genOnBind){
+                /*
                 if(textures[texture] == null) {
                     textures[texture] = new TextureInstance()
                     textures[texture].texID = texture
-                }
-            } else if (texture == 0) {
+                }*/
+            //} else 
+            if (texture == 0) {
+                textures[0] = new TextureInstance()
+                textures[0].texID = 0
+                textures[0].texture = context.createTexture(1, 1, Context3DTextureFormat.BGRA, false)
+
                 // FIXME (egeorgie): just set the sampler to null and clear the active texture params?
                 if (log) log.send("Trying bind the non-existent texture 0!")
                 return
             }
             
-            if (log) log.send( "[IMPLEMENTED] glBindTexture " + type + " " + texture + ", tu: " + activeTextureUnit + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glBindTexture " + type + " " + texture + ", tu: " + activeTextureUnit + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glBindTexture Sampler " + texture + " resolves into " + textures[texture] + "\n")
 
             if (activeCommandList)
             {
@@ -2341,7 +2372,12 @@ package GLS3D
 
         public function glTexImage2D(target:uint, level:int, intFormat:int, width:int, height:int, border:int, format:uint, imgType:uint, ptr:uint, ram:ByteArray):void
         {
-            if (log) log.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] + " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " + 
+            if (width == 1 && height == 1) {
+                if (log2) log2.send("[IMPLEMENTED] glTexImage2D does not support 1x1 textures - No-Op");
+                return;
+            }
+
+            if (log2) log2.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] + " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " + 
                       PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " + imgType.toString(16) + "\n")
 
             if (intFormat == GL_LUMINANCE)
@@ -2359,6 +2395,7 @@ package GLS3D
             var dataOffset:uint
             if (format != GL_BGRA)
             {
+                if (log2) log2.send( "[IMPLEMENTED] glTexImage2D: Converting to BGRA" )
                 // Convert the texture format
                 data = convertPixelDataToBGRA(width, height, format, ram, ptr)
                 dataOffset = 0
@@ -2380,7 +2417,7 @@ package GLS3D
             }
             else 
             {
-                if (log) log.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D")
+                if (log2) log2.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D")
             }
         }
         
@@ -2427,10 +2464,288 @@ package GLS3D
             textures[texid] = null // TODO: fix things so we can eventually reuse textureIDs
         }
 
+        public function glGenFramebuffers(length:uint):uint
+        {
+            var result:uint = framebufferID
+            if (log2) log2.send( "[IMPLEMENTED] glGenFramebuffers " + length + ", returning ID = [ " + result + ", " + (result + length - 1) + " ]\n")
+            for (var i:int = 0; i < length; i++) {
+                framebuffers[framebufferID] = new FramebufferInstance()
+                framebuffers[framebufferID].id = framebufferID
+                framebufferID++
+            }
+            return result
+        }
+
+        public function glBindFramebuffer(target:uint, framebuffer:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glBindFramebuffer " + target + " " + framebuffer + "\n")
+
+            if (framebuffer != 0)
+            {
+                activeFramebuffer = framebuffers[framebuffer]
+                if (activeFramebuffer.texture)
+                {
+                    context.setRenderToTexture(activeFramebuffer.texture.texture)
+                }
+            }
+            else
+            {
+                context.setRenderToBackBuffer()
+            }
+        }
+
+        public function glFramebufferTexture2D(target:uint, attachment:uint, textarget:uint, texture:uint, level:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glFramebufferTexture2D " + target + " " + attachment + " " + textarget + " " + texture + " " + level + "\n")
+            
+            activeFramebuffer.texture = textures[texture]
+        }
+
+        public function glCreateShader(type:uint):uint
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glCreateShader " + type + "\n")
+
+            var result:uint = shaderID
+
+            shaders[shaderID] = new ShaderInstance()
+            shaders[shaderID].id = shaderID
+            shaders[shaderID].type = type
+            shaderID++
+
+            return result
+        }
+
+        public function glShaderSource(shader:uint, json:String):void
+        {
+            if (log2) log2.send("Parsing \"" + json + "\"");
+            
+            var obj:Object = JSON.parse(json);
+            var source:String = obj["agalasm"]
+
+            if (log2) log2.send( "[IMPLEMENTED] glShaderSource " + source + "\n")
+
+            var shaderInstance:ShaderInstance = shaders[shader]
+            shaderInstance.json = obj
+            if (shaderInstance.type == GL_VERTEX_SHADER)
+                agalAssembler.assemble(Context3DProgramType.VERTEX, source)
+            else
+                agalAssembler.assemble(Context3DProgramType.FRAGMENT, source)
+
+            shaderInstance.agalcode = agalAssembler.agalcode
+        }
+
+        public function glCompileShader(shader:uint):void
+        {
+            // We already compiled everything in glShaderSource()
+        }
+
+        public function glCreateProgram():uint
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glCreateProgram\n")
+
+            var result:uint = programID
+
+            programs[programID] = new ProgramInstance()
+            programs[programID].id = programID
+            programs[programID].program = context.createProgram()
+            programID++
+
+            return result
+        }
+
+        public function glAttachShader(program:uint, shader:uint):void
+        {
+            var programInstance:ProgramInstance = programs[program]
+            var shaderInstance:ShaderInstance = shaders[shader]
+
+            if (shaderInstance.type == GL_VERTEX_SHADER)
+                programInstance.vertexShader = shaderInstance
+            else
+                programInstance.fragmentShader = shaderInstance
+        }
+
+        public function glBindAttribLocation(program:uint, index:uint, name:String):void
+        {
+            var programInstance:ProgramInstance = programs[program]
+            
+            var op:String = programInstance.vertexShader.json["varnames"][name]
+            if (op)
+            {
+                var opIndex:uint = uint(op.charAt(2))
+                programInstance.attribMap[index] = opIndex
+                if (log2) log2.send("glBindAttribLocation " + index + " : " + name + " -> " + op + " -> " + opIndex + "\n")
+            }
+            else
+            {
+                if (log2) log2.send("glBindAttribLocation " + index + " : " + name + " -> " + op + "\n")   
+            }
+        }
+
+        public function setVertexBuffer(index:uint, format:uint, data:ByteArray, dataPtr:uint, size:uint, elementSize:uint) {
+            var vertices:VertexBuffer3D = context.createVertexBuffer(size / elementSize, elementSize / 4)
+            vertices.uploadFromByteArray(data, dataPtr, 0, size / elementSize)
+
+            var agalIndex:uint = activeProgramInstance.attribMap[index]
+
+            if (activeProgramInstance) 
+            {
+                if (log2) log2.send("setVertexBuffer: Setting vertex data source #" + agalIndex + " to a buffer of " + size + " bytes with " + elementSize + " element size \n")
+                
+                var vertexBufferFormat:String = Context3DVertexBufferFormat.FLOAT_3;
+                // fix dirty me
+                if (elementSize == 4 * 2) vertexBufferFormat = Context3DVertexBufferFormat.FLOAT_2;
+                if (elementSize == 4 * 3) vertexBufferFormat = Context3DVertexBufferFormat.FLOAT_3;
+                if (elementSize == 4 * 4) vertexBufferFormat = Context3DVertexBufferFormat.FLOAT_4;
+
+                context.setVertexBufferAt(agalIndex, vertices, 0, vertexBufferFormat)
+            }
+            else 
+            {
+                if (log2) log2.send("setVertexBuffer: No active program is in place - the function is no-op\n")  
+            }
+        }
+
+        public function clearVertexBuffer(index:uint):void
+        {
+            //var agalIndex:uint = activeProgramInstance.attribMap[index]
+            context.setVertexBufferAt(index, null)
+        }
+
+        public function glDrawTriangles(count:uint) {
+            var indexes:IndexBuffer3D = context.createIndexBuffer(count);
+            var indexValues:Vector.<uint> = new Vector.<uint>()
+
+            for(var i:uint = 0; i < count; i++) {
+                indexValues.push(i)
+            }
+
+            if (log2) log2.send("glDrawTriangles: Drawing " + count / 3 + " triangles\n")  
+
+            indexes.uploadFromVector(indexValues, 0, count)
+            context.drawTriangles(indexes)
+        }
+
+        public function glLinkProgram(program:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glLinkProgram from " + program + "\n")
+
+            var programInstance:ProgramInstance = programs[program]   
+
+            programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
+        }
+
+        public function glGetUniformLocation(program:uint, name:String):uint
+        {
+            variableID++
+
+            if (log2) log2.send( "[IMPLEMENTED] glGetUniformLocation from " + program + " @ " + name + " (going to use " + variableID + ")\n")
+
+            var programInstance:ProgramInstance = programs[program]
+
+            var constantRegister:String = programInstance.vertexShader.json["varnames"][name];
+            if (constantRegister) {
+                if (log2) log2.send("glGetUniformLocation " + program + " : " + name + " found in Vertex Shader @ " + constantRegister + "\n")
+
+                variableHandles[variableID] = new VariableHandle()
+                variableHandles[variableID].id = variableID
+                variableHandles[variableID].shader = programInstance.vertexShader
+                variableHandles[variableID].number = uint(constantRegister.charAt(2))
+                variableHandles[variableID].name = constantRegister
+
+                return variableID;
+            } 
+            
+            constantRegister = programInstance.fragmentShader.json["varnames"][name];
+            if (constantRegister) {
+                if (log2) log2.send("glGetUniformLocation " + program + " : " + name + " found in Fragment Shader @ " + constantRegister + "\n")
+                
+                variableHandles[variableID] = new VariableHandle()
+                variableHandles[variableID].id = variableID
+                variableHandles[variableID].shader = programInstance.fragmentShader
+                variableHandles[variableID].number = uint(constantRegister.charAt(2))
+                variableHandles[variableID].name = constantRegister
+
+                return variableID;
+            }   
+
+            // var not found on vertex or fragment shader
+            return -1;       
+        }
+
+        public function glUniform4f(handle:uint, v0:Number, v1:Number, v2:Number, v3:Number):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) " + handle + "\n")
+
+            var variableHandle = variableHandles[handle]
+
+            if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) resolved " + handle + " into " + variableHandle.name + " register\n")
+
+            if (variableHandle.name.substr(0, 2) == "fs") 
+            {
+                var texture:TextureInstance = textureSamplers[ uint(v0) ]
+                if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to " + uint(v0) +
+                " which resolves into " + texture.texture + "\n")
+                context.setTextureAt(variableHandle.number, texture.texture)
+
+                return
+            }
+
+            var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
+            context.setProgramConstantsFromVector(shaderType, variableHandle.number, Vector.<Number>([v0, v1, v2, v3]))
+        }
+
+        public function glUniformMatrix4f(handle:uint, transpose:Boolean, v0:Number, v1:Number, v2:Number, v3:Number, v4:Number, v5:Number, v6:Number, v7:Number, v8:Number, v9:Number, v10:Number, v11:Number, v12:Number, v13:Number, v14:Number, v15:Number):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f " + handle + "\n")
+
+            var variableHandle = variableHandles[handle]
+            var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
+
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f setting float4x4 into " + variableHandle.number + " for " + shaderType + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f value = " + v0 + " " + v1 + " " + v2 + " " + v3 + "\n" 
+                    + v4 + " " + v5 + " " + v6 + " " + v7 + "\n" 
+                    + v8 + " " + v9 + " " + v10 + " " + v11 + "\n" 
+                    + v12 + " " + v13 + " " + v14 + " " + v15 + "\n" 
+                    + "\n")
+
+            context.setProgramConstantsFromMatrix(shaderType, variableHandle.number, new Matrix3D( new <Number>[
+                v0, v1, v2, v3,
+                v4, v5, v6, v7,
+                v8, v9, v10, v11,
+                v12, v13, v14, v15
+            ]), !transpose)
+        }
+
         public function glColorMask(red:Boolean, green:Boolean, blue:Boolean, alpha:Boolean):void
         {
-            if (log) log.send( "[IMPLEMENTED] glColorMask " + red + " " + green + " " + blue + " " + alpha + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glColorMask " + red + " " + green + " " + blue + " " + alpha + "\n")
             context.setColorMask(red, green, blue, alpha)  
+        }
+
+        public function glUseProgram(program:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glUseProgram " + program + "\n")
+
+            var programInstance:ProgramInstance = programs[program]
+            context.setProgram(programInstance.program)
+
+            this.activeProgramInstance = programInstance;
+
+            var constantName:String
+            var consts:Object = programInstance.vertexShader.json["consts"];
+            for(constantName in consts) {
+                if (log2) log2.send( "[IMPLEMENTED] glUseProgram: Setting vertex const " + constantName + " for " + program + "\n")
+                context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, uint(constantName.charAt(2)), Vector.<Number>(consts[constantName]))
+            }
+
+            consts = programInstance.fragmentShader.json["consts"];
+            for(constantName in consts) {
+                if (log2) log2.send( "[IMPLEMENTED] glUseProgram: Setting fragment const " + constantName + " for " + program + "\n")
+                context.setProgramConstantsFromVector(Context3DProgramType.FRAGMENT, uint(constantName.charAt(2)), Vector.<Number>(consts[constantName]))
+            }
+
+            context.setTextureAt(1, null)
+            context.setTextureAt(2, null)
         }
         
         private function stencilOpToContext3DStencilAction(op:uint):String
@@ -2499,9 +2814,10 @@ package GLS3D
                 context.setScissorRectangle(scissorRect)
         }
 
-        public function glViewport(x:int, y:int, width:int, height:int):void
+        public function glViewport(x:uint, y:uint, width:uint, height:uint):void
         {
-            // Not natively supported on this platform. Emulate with a scissor and VS scale/bias.
+            if (log2) log2.send("[IMPLEMENTED] glViewport invoked with " + x + ", " + y + ", " + width + ", " + height + "\n")
+            context.configureBackBuffer(width, height, 0, false)
         }
 
         public function glDepthRangef(near:Number, far:Number):void
@@ -2754,7 +3070,7 @@ class VertexBufferAttribute
     public var isGeneric:Boolean = true
 }
 
-class ProgramInstance
+class _ProgramInstance
 {
     public var program:Program3D
     public var id:uint
@@ -2793,6 +3109,37 @@ class FixedFunctionProgramInstance
     public var vertexStreamUsageFlags:uint = 0
     public var hasTexture:Boolean = false
     public var key:String
+}
+
+class FramebufferInstance
+{
+    public var id:uint
+    public var texture:TextureInstance
+}
+
+class ShaderInstance
+{
+    public var id:uint
+    public var type:uint
+    public var agalcode:ByteArray
+    public var json:Object
+}
+
+class ProgramInstance
+{
+    public var id:uint
+    public var program:Program3D
+    public var vertexShader:ShaderInstance
+    public var fragmentShader:ShaderInstance
+    public var attribMap:Dictionary = new Dictionary()
+}
+
+class VariableHandle 
+{
+    public var id:uint
+    public var shader:ShaderInstance
+    public var number:uint
+    public var name:String
 }
 
 class TraceLog
