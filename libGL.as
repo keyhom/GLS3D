@@ -1748,7 +1748,7 @@ package GLS3D
             _stage = stage
 
             //this.log = new TraceLog()
-            //this.log2 = new TraceLog()
+            this.log2 = new TraceLog()
             this.context = context
 
             agalAssembler = new AGALMiniAssembler()
@@ -2611,18 +2611,66 @@ package GLS3D
             context.setVertexBufferAt(index, null)
         }
 
-        public function glDrawTriangles(count:uint) {
-            var indexes:IndexBuffer3D = context.createIndexBuffer(count);
-            var indexValues:Vector.<uint> = new Vector.<uint>()
+        private var _indexBuffer:IndexBuffer3D = null
 
-            for(var i:uint = 0; i < count; i++) {
-                indexValues.push(i)
+        public function setIndexBuffer(data:ByteArray, dataPtr:uint, indexCount:uint)
+        {
+            log2.send("setIndexBuffer data: " + data.length + " dataPtr: " + dataPtr + " indexCount: " + indexCount + "\n")
+
+            var stubSize:uint = 5000
+            _indexBuffer = context.createIndexBuffer(stubSize)//indexCount)
+            var tmp:Vector.<uint> = new Vector.<uint>()
+            for (var i:uint = 0; i < stubSize; i++) {
+                tmp.push(0)
             }
+            _indexBuffer.uploadFromVector(tmp, 0, stubSize)
+            _indexBuffer.uploadFromByteArray(data, dataPtr, 0, indexCount)
+        }
 
-            if (log2) log2.send("glDrawTriangles: Drawing " + count / 3 + " triangles\n")  
+        public function clearIndexBuffer()
+        {
+            _indexBuffer = null;
+        }
 
-            indexes.uploadFromVector(indexValues, 0, count)
-            context.drawTriangles(indexes)
+        public function glDrawTriangles(vertexCount:uint, stripe:Boolean) {
+            
+            if (_indexBuffer == null)
+            {
+                var indexValues:Vector.<uint> = null
+                var indexCount:uint = 0
+                var i:uint = 0
+
+                if (!stripe)
+                {
+                    indexCount = vertexCount
+                    _indexBuffer = context.createIndexBuffer(indexCount);
+                    indexValues = new Vector.<uint>()
+
+                    for(i = 0; i < vertexCount; i++) {
+                        indexValues.push(i)
+                    }
+                }
+                else
+                {
+                    if (log2) log2.send("Drawing stripe\n")
+
+                    indexCount = 3 * (vertexCount - 2)
+                    _indexBuffer = context.createIndexBuffer(indexCount)
+                    indexValues = new Vector.<uint>()
+
+                    for(i = 0; i < vertexCount - 2; i++) {
+                        indexValues.push(i + 0)
+                        indexValues.push(i + 1)
+                        indexValues.push(i + 2)
+                    }
+                }
+
+                if (log2) log2.send("glDrawTriangles: Drawing " + indexCount / 3 + " triangles\n")
+
+                _indexBuffer.uploadFromVector(indexValues, 0, indexCount)
+            }
+            log2.send( "Going to draw " + (vertexCount / 3) + " vertices\n")
+            context.drawTriangles(_indexBuffer, 0, vertexCount / 3)
         }
 
         public function glLinkProgram(program:uint):void

@@ -745,13 +745,13 @@ static int max(int a, int b)
 
 static int verboseDebug = 0;
 
-extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
+/*extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
 {
 	// Draw Indexed Primitive
 	_glDrawPrimitives<true>(0, count, indices, mode, type);
 }
 
-/*extern void glDrawArrays (GLenum mode, GLint first, GLsizei count)
+extern void glDrawArrays (GLenum mode, GLint first, GLsizei count)
 {
 	// Draw NonIndexed Primitive
 	_glDrawPrimitives<false>(first, count, NULL, mode, GL_UNSIGNED_INT);
@@ -4279,7 +4279,7 @@ extern void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboole
 
 extern void glDrawArrays(GLenum mode, GLint first, GLsizei count)
 {
-    if (mode != GL_TRIANGLES)
+    if (mode != GL_TRIANGLES && mode != GL_TRIANGLE_STRIP)
     {
         fprintf(stderr, "Problem officer: We don't support anything but triangles, but you gave us shit = %d\n", mode);
         return; 
@@ -4297,7 +4297,38 @@ extern void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     }
 
     inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.glDrawTriangles(%0);\n" :: "r"(count));
+               "GLAPI.instance.clearIndexBuffer();\n");
+
+    bool stripe = mode == GL_TRIANGLE_STRIP;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glDrawTriangles(%0, %1);\n" :: "r"(count), "r"(stripe));
+}
+
+extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoid *indices)
+{
+    if (mode != GL_TRIANGLES)
+    {
+        fprintf(stderr, "Problem officer: We don't support anything but triangles, but you gave us shit = %d\n", mode);
+        return; 
+    }
+
+    for (int index = 0; index < 8; index++) {
+        inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.clearVertexBuffer(%0);\n" :: "r"(index));        
+    }
+
+    for(int index = 0; index < 8; index++) {
+      if (attributeStatuses[index]) {
+        uploadVertexData(attributes[index], 0, count);
+      }
+    }
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.setIndexBuffer(ram, %0, %1);\n" :: "r"(indices), "r"(count));
+
+    bool stripe = false;
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glDrawTriangles(%0, %1);\n" :: "r"(count), "r"(stripe));
 }
 
 extern void glEnableVertexAttribArray(GLuint index)
