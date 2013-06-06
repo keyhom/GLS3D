@@ -122,6 +122,11 @@ package GLS3D
         private var vertexBuffers:Vector.<VertexBuffer3D> = new <VertexBuffer3D>[];
         private var indexBuffer:VertexBuffer3D = null;
 
+        private var buffers:Dictionary = new Dictionary()
+        private var bufferID:uint = 1
+        private var activeArrayBuffer:BufferInstance = null
+        private var activeElementArrayBuffer:BufferInstance = null
+
         private var shininessVec:Vector.<Number> = new <Number>[0.0, 0.0, 0.0, 0.0]
         private var globalAmbient:Vector.<Number> = new <Number>[0.2, 0.2, 0.2, 1]
         private var polygonOffsetValue:Number = -0.0005
@@ -1008,19 +1013,104 @@ package GLS3D
             }
         }
 
-        public function glGenBuffers(count:uint, dataPtr:uint):void
+        public function glGenBuffers(length:uint):uint
         {
-            if(count != 1)
-                throw "unimplemented"
-
-            vertexBufferObjects.push(null); // will be created for real by glBufferData
-            CModule.write32(dataPtr, vertexBufferObjects.length - 1);
+            var result:uint = bufferID
+            if (log2) log2.send("[IMPLEMENTED] glGenBuffers " + length + ", returning ID = [ " + result + ", " + (result + length - 1) + " ]\n")
+            for (var i:int = 0; i < length; i++) {
+                buffers[bufferID] = new BufferInstance()
+                buffers[bufferID].id = bufferID
+                bufferID++
+            }
+            return result
         }
 
-        public function glBufferData(target:uint, size:uint, dataPtr:uint, usage:uint):void
+        public function glBindBuffer(target:uint, buffer:uint):void
         {
-            if(target != GL_ARRAY_BUFFER)
-                throw "unimplemented"
+            if (log2) log2.send("[IMPLEMENTED] glBindBuffer target: " + target + " buffer: " + buffer + "\n")
+
+            if (target == GL_ARRAY_BUFFER) {
+                if (buffer != 0) {
+                    activeArrayBuffer = buffers[buffer]
+                    activeArrayBuffer.type = GL_ARRAY_BUFFER
+                } else {
+                    activeArrayBuffer = null
+                }
+            }
+
+            if (target == GL_ELEMENT_ARRAY_BUFFER) {
+                if (buffer != 0) {
+                    activeElementArrayBuffer = buffers[buffer]
+                    activeElementArrayBuffer.type = GL_ELEMENT_ARRAY_BUFFER
+                } else {
+                    activeElementArrayBuffer = null
+                }
+            }
+        }
+
+        public function glBufferData(target:uint, size:uint, data:ByteArray, dataPtr:uint, usage:uint):void
+        {
+            if (log2) log2.send("[IMPLEMENTED] glBufferData target: " + target + " size: " + size + "\n")
+
+            if (target == GL_ARRAY_BUFFER) {
+                // We can not create vertex buffer here because we don't know element size here
+                activeArrayBuffer.size = size
+                activeArrayBuffer.uploaded = false
+                activeArrayBuffer.data = new ByteArray()
+                if (dataPtr != 0) {
+                    activeArrayBuffer.data.writeBytes(data, dataPtr, size)
+                }
+            }
+            
+            if (target == GL_ELEMENT_ARRAY_BUFFER) {
+                // In case of index bufer we can calculate number of elements from byte size
+                activeElementArrayBuffer.size = size
+                activeElementArrayBuffer.uploaded = true
+                activeElementArrayBuffer.indexBuffer = context.createIndexBuffer(size / 2)
+
+                if (dataPtr != 0) {
+                    activeElementArrayBuffer.indexBuffer.uploadFromByteArray(data, dataPtr, 0, size / 2)
+                } else {
+                    // In case of NULL data pointer just initialize buffer with zeroes
+                    var tmp:ByteArray = new ByteArray()
+                    for (var i:uint = 0; i < size; i++) {
+                        tmp.writeByte(0)
+                    }
+                    activeElementArrayBuffer.indexBuffer.uploadFromByteArray(tmp, 0, 0, size / 2)
+                }
+            }
+        }
+
+        public function glBufferSubData(target:uint, size:uint, data:ByteArray, dataPtr:uint):void
+        {
+            if (log2) log2.send("[IMPLEMENTED] glBufferSubData size: " + size + "\n")
+
+            if (target == GL_ARRAY_BUFFER) {
+                if (activeArrayBuffer.vertexBuffer) {
+                    activeArrayBuffer.vertexBuffer.uploadFromByteArray(data, dataPtr, 0, size / activeArrayBuffer.stride)
+                } else {
+                    activeArrayBuffer.uploaded = false
+                    activeArrayBuffer.data = new ByteArray()
+                    if (dataPtr != 0) {
+                        activeArrayBuffer.data.writeBytes(data, dataPtr, size)
+                    }
+                }
+            }
+
+            if (target == GL_ELEMENT_ARRAY_BUFFER) {
+                if (log2) log2.send("[IMPLEMENTED] glBufferSubData activeElementArrayBuffer: " + activeElementArrayBuffer + "\n")
+                
+                if (activeElementArrayBuffer.indexBuffer) {
+                    activeElementArrayBuffer.indexBuffer.uploadFromByteArray(data, dataPtr, 0, size / 2)
+                } else {
+                    // In normal case we should never get here
+                    activeElementArrayBuffer.uploaded = false
+                    activeElementArrayBuffer.data = new ByteArray()
+                    if (dataPtr != 0) {
+                        activeElementArrayBuffer.data.writeBytes(data, dataPtr, size)
+                    }
+                }
+            }
         }
 
         var debugCubeStream:VertexStream
@@ -2581,7 +2671,17 @@ package GLS3D
             }
         }
 
-        public function setVertexBuffer(index:uint, format:uint, data:ByteArray, dataPtr:uint, size:uint, elementSize:uint) {
+        public function getVertexBufferFormat(elementSize:uint):String
+        {
+            if (elementSize == 4 * 1) return Context3DVertexBufferFormat.FLOAT_1;
+            if (elementSize == 4 * 2) return Context3DVertexBufferFormat.FLOAT_2;
+            if (elementSize == 4 * 3) return Context3DVertexBufferFormat.FLOAT_3;
+            if (elementSize == 4 * 4) return Context3DVertexBufferFormat.FLOAT_4;
+
+            return "";
+        }
+
+        public function setVertexData(index:uint, format:uint, data:ByteArray, dataPtr:uint, size:uint, elementSize:uint):void {
             var vertices:VertexBuffer3D = context.createVertexBuffer(size / elementSize, elementSize / 4)
             vertices.uploadFromByteArray(data, dataPtr, 0, size / elementSize)
 
@@ -2589,19 +2689,57 @@ package GLS3D
 
             if (activeProgramInstance) 
             {
-                if (log2) log2.send("setVertexBuffer: Setting vertex data source #" + agalIndex + " to a buffer of " + size + " bytes with " + elementSize + " element size \n")
+                if (log2) log2.send("setVertexData: Setting vertex data source #" + agalIndex + " to a buffer of " + size + " bytes with " + elementSize + " element size \n")
                 
-                var vertexBufferFormat:String = Context3DVertexBufferFormat.FLOAT_3;
-                // fix dirty me
-                if (elementSize == 4 * 2) vertexBufferFormat = Context3DVertexBufferFormat.FLOAT_2;
-                if (elementSize == 4 * 3) vertexBufferFormat = Context3DVertexBufferFormat.FLOAT_3;
-                if (elementSize == 4 * 4) vertexBufferFormat = Context3DVertexBufferFormat.FLOAT_4;
+                var vertexBufferFormat:String = getVertexBufferFormat(elementSize);
 
                 context.setVertexBufferAt(agalIndex, vertices, 0, vertexBufferFormat)
             }
             else 
             {
-                if (log2) log2.send("setVertexBuffer: No active program is in place - the function is no-op\n")  
+                if (log2) log2.send("setVertexData: No active program is in place - the function is no-op\n")  
+            }
+        }
+
+        public function setVertexBuffer(index:uint, buffer:uint, offset:uint, elementSize:uint):void
+        {
+            log2.send("setVertexBuffer: index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");  
+
+            // We can no resolve agalIndex for specified vertexAttribute without active program
+            if (!activeProgramInstance) {
+                return;
+            }
+
+            var bufferInstance:BufferInstance = buffers[buffer]
+            var agalIndex:uint = activeProgramInstance.attribMap[index]
+            var vertexBufferFormat:String = getVertexBufferFormat(elementSize);
+
+            // Offset is divided by 4 because Stage3D needs offset in 32-bit words
+            context.setVertexBufferAt(agalIndex, bufferInstance.vertexBuffer, offset / 4, vertexBufferFormat)
+        }
+
+        public function uploadVertexBuffer(buffer:uint, stride:uint):void
+        {
+            if (log2) log2.send("[IMPLEMENTED] uploadVertexBuffer buffer: " + buffer + "\n")
+
+            var bufferInstance:BufferInstance = buffers[buffer]
+            if (!bufferInstance.uploaded)
+            {
+                bufferInstance.stride = stride
+                var vertexCount:uint = bufferInstance.size / bufferInstance.stride
+
+                bufferInstance.stride = stride
+                bufferInstance.vertexBuffer = context.createVertexBuffer(vertexCount, bufferInstance.stride / 4)
+
+                // In Stage3D vertex buffer should fully uploaded at least once
+                var missingBytes:uint = vertexCount * bufferInstance.stride - bufferInstance.data.length
+                for (var i:uint = 0; i < missingBytes; i++) {
+                    bufferInstance.data.writeByte(0)
+                }
+
+                bufferInstance.vertexBuffer.uploadFromByteArray(bufferInstance.data, 0, 0, bufferInstance.data.length / bufferInstance.stride)
+                bufferInstance.data = null
+                bufferInstance.uploaded = true
             }
         }
 
@@ -2633,8 +2771,7 @@ package GLS3D
         }
 
         public function glDrawTriangles(vertexCount:uint, stripe:Boolean) {
-            
-            if (_indexBuffer == null)
+            if (activeElementArrayBuffer == null && _indexBuffer == null)
             {
                 var indexValues:Vector.<uint> = null
                 var indexCount:uint = 0
@@ -2669,8 +2806,13 @@ package GLS3D
 
                 _indexBuffer.uploadFromVector(indexValues, 0, indexCount)
             }
-            log2.send( "Going to draw " + (vertexCount / 3) + " vertices\n")
-            context.drawTriangles(_indexBuffer, 0, vertexCount / 3)
+
+            log2.send( "Going to draw " + (vertexCount / 3) + " triangles\n")
+            if (activeElementArrayBuffer != null) {
+                context.drawTriangles(activeElementArrayBuffer.indexBuffer, 0, vertexCount / 3)
+            } else {
+                context.drawTriangles(_indexBuffer, 0, vertexCount / 3)
+            }
         }
 
         public function glLinkProgram(program:uint):void
@@ -3082,6 +3224,18 @@ internal class DataBuffer
         data = new ByteArray()
         data.endian = "littleEndian"
     }
+}
+
+class BufferInstance
+{
+    public var id:uint
+    public var data:ByteArray
+    public var size:uint
+    public var type:uint
+    public var stride:uint
+    public var vertexBuffer:VertexBuffer3D
+    public var indexBuffer:IndexBuffer3D
+    public var uploaded:Boolean
 }
 
 class TextureInstance

@@ -759,14 +759,22 @@ extern void glDrawArrays (GLenum mode, GLint first, GLsizei count)
 
 extern void glGenBuffers (GLsizei n, GLuint *buffers)
 {
+    int i;
+    unsigned firstIndex;
+
     inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.glGenBuffers(%0, %1);" :  : "r"(n), "r"(buffers));
+               "var result:uint = GLAPI.instance.glGenBuffers(%0);\n" :: "r"(n));
+    AS3_GetScalarFromVar(firstIndex, result);
+
+    for (i = 0; i < n; i++) {
+        buffers[i] = firstIndex + i;
+    }
 }
 
 extern void glBufferData (GLenum target, GLsizeiptr size, const GLvoid *data, GLenum usage)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.glBufferData(%0, %1, %2, %3);" :  : "r"(target), "r"(size), "r"(data), "r"(usage));
+               "GLAPI.instance.glBufferData(%0, %1, ram, %2, %3);" :  : "r"(target), "r"(size), "r"(data), "r"(usage));
 }
 
 extern void glColorPointer (GLint size, GLenum type, GLsizei stride, const GLvoid *pointer)
@@ -1228,6 +1236,9 @@ extern void glAlphaFunc (GLenum func, GLclampf ref)
 #include <GL/gl.h>
 
 static int stubMsg = 1;
+static GLuint activeArrayBuffer = 0;
+static GLuint activeElementArrayBuffer = 0;
+
 extern void glAccum (GLenum op, GLfloat value)
 {
     if(stubMsg) {
@@ -3908,25 +3919,32 @@ extern void glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params)
     }
 }
 
-extern void glBindBuffer (GLenum target, GLuint buffer)
+extern void glBindBuffer(GLenum target, GLuint buffer)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glBindBuffer...\n");
+    if (target == GL_ARRAY_BUFFER) {
+      activeArrayBuffer = buffer;
     }
+
+    if (target == GL_ELEMENT_ARRAY_BUFFER) {
+      activeElementArrayBuffer = buffer;
+    }
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glBindBuffer(%0, %1)\n" :: "r"(target), "r"(buffer));
 }
 
-extern void glDeleteBuffers (GLsizei n, const GLuint *buffers)
+extern void glDeleteBuffers(GLsizei n, const GLuint *buffers)
 {
     if(stubMsg) {
         fprintf(stderr, "stubbed glDeleteBuffers...\n");
     }
 }
 
-extern void glBufferSubData (GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid *data)
+extern void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid *data)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glBufferSubData...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glBufferSubData(%0, %1, ram, %2)\n" :: "r"(target), "r"(size), "r"(data));
+
 }
 
 extern void glGetBufferSubData (GLenum target, GLintptr offset, GLsizeiptr size, GLvoid *data)
@@ -3936,28 +3954,28 @@ extern void glGetBufferSubData (GLenum target, GLintptr offset, GLsizeiptr size,
     }
 }
 
-extern GLvoid * glMapBuffer (GLenum target, GLenum access)
+extern GLvoid * glMapBuffer(GLenum target, GLenum access)
 {
     if(stubMsg) {
         fprintf(stderr, "stubbed *...\n");
     }
 }
 
-extern void glGetBufferParameteriv (GLenum target, GLenum pname, GLint *params)
+extern void glGetBufferParameteriv(GLenum target, GLenum pname, GLint *params)
 {
     if(stubMsg) {
         fprintf(stderr, "stubbed glGetBufferParameteriv...\n");
     }
 }
 
-extern void glGetBufferPointerv (GLenum target, GLenum pname, GLvoid **params)
+extern void glGetBufferPointerv(GLenum target, GLenum pname, GLvoid **params)
 {
     if(stubMsg) {
         fprintf(stderr, "stubbed glGetBufferPointerv...\n");
     }
 }
 
-extern void glVertexAttrib1d (GLuint index, GLdouble x)
+extern void glVertexAttrib1d(GLuint index, GLdouble x)
 {
     if(stubMsg) {
         fprintf(stderr, "stubbed glVertexAttrib1d...\n");
@@ -4219,6 +4237,7 @@ struct VertexAttribute {
   GLenum type;
   GLsizei stride;
   const GLvoid *pointer;
+  GLuint buffer;
 };
 
 static VertexAttribute attributes[8];
@@ -4245,27 +4264,36 @@ static void uploadVertexData(VertexAttribute attribute, GLint first, GLsizei cou
       attribute.stride = elementSize;
     }
 
-    // allocate memory
-    // FIXME pre-allocate + re-use
-    int bufferByteSize = (elementSize * count);
-    uint8_t *buffer = new uint8_t[bufferByteSize];
+    if (attribute.buffer == 0)
+    {
+      // allocate memory
+      // FIXME pre-allocate + re-use
+      int bufferByteSize = (elementSize * count);
+      uint8_t *buffer = new uint8_t[bufferByteSize];
 
-    uint8_t *dataPointer = (uint8_t *)attribute.pointer + (first * (elementSize + attribute.stride));
-    uint8_t *bufferPointer = buffer;
+      uint8_t *dataPointer = (uint8_t *)attribute.pointer + (first * (elementSize + attribute.stride));
+      uint8_t *bufferPointer = buffer;
 
-    // little forchick to copy the data
-    for(int i = 0; i < count; i++) {
-      memcpy(bufferPointer, dataPointer, elementSize);
+      // little forchick to copy the data
+      for(int i = 0; i < count; i++) {
+        memcpy(bufferPointer, dataPointer, elementSize);
 
-      dataPointer += attribute.stride;
-      bufferPointer += elementSize;
+        dataPointer += attribute.stride;
+        bufferPointer += elementSize;
+      }
+
+      // no more forchick - pass dat data!
+      inline_as3("import GLS3D.GLAPI;\n"\
+                 "GLAPI.instance.setVertexData(%0, %1, ram, %2, %3, %4);\n" :: "r"(attribute.index), "r"(attribute.type), "r"(buffer), "r"(bufferByteSize), "r"(elementSize));
+
+      delete [] buffer;
+    } else {
+      inline_as3("import GLS3D.GLAPI;\n"\
+        "GLAPI.instance.uploadVertexBuffer(%0, %1)\n" :: "r"(attribute.buffer), "r"(attribute.stride));
+
+      inline_as3("import GLS3D.GLAPI;\n"\
+        "GLAPI.instance.setVertexBuffer(%0, %1, %2, %3)\n" :: "r"(attribute.index), "r"(attribute.buffer), "r"(attribute.pointer), "r"(elementSize));
     }
-
-    // no more forchick - pass dat data!
-    inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.setVertexBuffer(%0, %1, ram, %2, %3, %4);\n" :: "r"(attribute.index), "r"(attribute.type), "r"(buffer), "r"(bufferByteSize), "r"(elementSize));
-
-    delete [] buffer;
 }
 
 extern void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid *pointer)
@@ -4275,6 +4303,7 @@ extern void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboole
     attributes[index].type = type;
     attributes[index].stride = stride;
     attributes[index].pointer = pointer;
+    attributes[index].buffer = activeArrayBuffer;
 }
 
 extern void glDrawArrays(GLenum mode, GLint first, GLsizei count)
