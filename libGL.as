@@ -1838,7 +1838,7 @@ package GLS3D
             _stage = stage
 
             //this.log = new TraceLog()
-            this.log2 = new TraceLog()
+            //this.log2 = new TraceLog()
             this.context = context
 
             agalAssembler = new AGALMiniAssembler()
@@ -2703,7 +2703,7 @@ package GLS3D
 
         public function setVertexBuffer(index:uint, buffer:uint, offset:uint, elementSize:uint):void
         {
-            log2.send("setVertexBuffer: index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");  
+            if (log2) log2.send("setVertexBuffer: index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");  
 
             // We can no resolve agalIndex for specified vertexAttribute without active program
             if (!activeProgramInstance) {
@@ -2753,7 +2753,7 @@ package GLS3D
 
         public function setIndexBuffer(data:ByteArray, dataPtr:uint, indexCount:uint)
         {
-            log2.send("setIndexBuffer data: " + data.length + " dataPtr: " + dataPtr + " indexCount: " + indexCount + "\n")
+            if (log2) log2.send("setIndexBuffer data: " + data.length + " dataPtr: " + dataPtr + " indexCount: " + indexCount + "\n")
 
             var stubSize:uint = 5000
             _indexBuffer = context.createIndexBuffer(stubSize)//indexCount)
@@ -2807,7 +2807,7 @@ package GLS3D
                 _indexBuffer.uploadFromVector(indexValues, 0, indexCount)
             }
 
-            log2.send( "Going to draw " + (vertexCount / 3) + " triangles\n")
+            if (log2) log2.send( "Going to draw " + (vertexCount / 3) + " triangles\n")
             if (activeElementArrayBuffer != null) {
                 context.drawTriangles(activeElementArrayBuffer.indexBuffer, 0, vertexCount / 3)
             } else {

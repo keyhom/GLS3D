@@ -3291,9 +3291,9 @@ extern void glCompressedTexImage3D (GLenum target, GLint level, GLenum internalf
 
 extern void glCompressedTexImage2D (GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const GLvoid *data)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glCompressedTexImage2D...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "GLAPI.instance.glCompressedTexImage2D(%0, %1, %2, %3, %4, %5, %6, %7, ram);\n" ::
+      "r"(target), "r"(level), "r"(internalformat), "r"(width), "r"(height), "r"(border), "r"(imageSize), "r"(data));
 }
 
 extern void glCompressedTexImage1D (GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const GLvoid *data)
