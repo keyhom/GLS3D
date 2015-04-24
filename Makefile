@@ -2,19 +2,26 @@ FLASCC:=X
 FLEX:=X
 AS3COMPILER:=asc2.jar
 
+# Detect host
 $?UNAME=$(shell uname -s)
 ifneq (,$(findstring CYGWIN,$(UNAME)))
-	$?nativepath=$(shell cygpath -at mixed $(1))
-	$?unixpath=$(shell cygpath -at unix $(1))
+	$?nativepath=$(shell cygpath -at mixed "$(1)")
+	$?unixpath=$(shell cygpath -at unix "$(1)")
 else
 	$?nativepath=$(abspath $(1))
 	$?unixpath=$(abspath $(1))
 endif
 
-ifneq (,$(findstring "asc2.jar","$(AS3COMPILER)"))
-	$?AS3COMPILERARGS=java $(JVMARGS) -jar $(call nativepath,$(FLASCC)/usr/lib/$(AS3COMPILER)) -merge -md 
-else
-	echo "ASC is no longer supported" ; exit 1 ;
+# CrossBridge SDK Home
+$?FLASCC:=$(call unixpath,$(FLASCC_ROOT)/sdk)
+# $?ASC2=java -jar $(call nativepath,$(FLASCC)/usr/lib/asc2.jar) -merge -md -parallel
+$?ASC2="$(call nativepath,$(FLASCC)/usr/lib/asc2.jar)"
+
+# Auto Detect AIR/Flex SDKs
+$?FLEX=$(AIR_HOME)
+
+ifeq (,$(FLEX))
+	$?FLEX:=X
 endif
 
 all: check compile
@@ -27,13 +34,13 @@ check:
 	@if [ -d "$(FLEX)/bin" ] ; then true ; \
 	else echo "Couldn't locate Flex sdk directory, please invoke make with \"make FLEX=/path/to/flex  ...\"" ; exit 1 ; \
 	fi
-	
+
 compile:
 	@mkdir -p install/usr/lib
 	@mkdir -p install/usr/include
-	
+
 	@echo "Compiling libGL.as"
-	$(AS3COMPILERARGS) -md -strict -optimize -abcfuture -AS3 \
+	java -jar $(ASC2) -merge -md -parallel -strict -optimize -abcfuture -AS3 \
 	-import $(call nativepath,$(FLASCC)/usr/lib/builtin.abc) \
 	-import $(call nativepath,$(FLASCC)/usr/lib/playerglobal.abc) \
 	-import $(call nativepath,$(FLASCC)/usr/lib/BinaryData.abc) \
@@ -54,12 +61,12 @@ compile:
 	-in src/com/adobe/utils/macro/VM.as \
 	libGL.as
 	@mv libGL.abc install/usr/lib/
-	
+
 	@echo "Compiling libGL.cpp"
 	@$(FLASCC)/usr/bin/g++ -fno-exceptions -O4 -c -Iinstall/usr/include/ libGL.cpp
-	@$(FLASCC)/usr/bin/ar crus install/usr/lib/libGL.a install/usr/lib/libGL.abc libGL.o 
+	@$(FLASCC)/usr/bin/ar crus install/usr/lib/libGL.a install/usr/lib/libGL.abc libGL.o
 
-	@rm -f libGL.o 
+	@rm -f libGL.o
 
 install: check
 	# @cp -rf install/usr/include/ $(FLASCC)/usr/include

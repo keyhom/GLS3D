@@ -2,25 +2,25 @@
 Copyright (c) 2012, Adobe Systems Incorporated
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
 met:
 
-* Redistributions of source code must retain the above copyright notice, 
+* Redistributions of source code must retain the above copyright notice,
 this list of conditions and the following disclaimer.
 
 * Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the 
+notice, this list of conditions and the following disclaimer in the
 documentation and/or other materials provided with the distribution.
 
-* Neither the name of Adobe Systems Incorporated nor the names of its 
-contributors may be used to endorse or promote products derived from 
+* Neither the name of Adobe Systems Incorporated nor the names of its
+contributors may be used to endorse or promote products derived from
 this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
 IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
 THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR 
+PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
 EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
 PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
@@ -46,7 +46,7 @@ package GLS3D
 
     import com.adobe.utils.*;
     import com.adobe.utils.macro.*;
-    import com.adobe.flascc.CModule; 
+    import com.adobe.flascc.CModule;
 
     // Linker trickery
     [Csym("D", "___libgl_abc__", ".data")]
@@ -60,6 +60,7 @@ package GLS3D
         public var disableCulling:Boolean = false
         public var disableBlending:Boolean = false
         public var log:Object = null; // new TraceLog();
+        public var log2:Object = null; // new TraceLog();
         public var context:Context3D
         public var genOnBind:Boolean = false
 
@@ -99,7 +100,33 @@ package GLS3D
         private var frontFaceClockWise:Boolean = false // we default to CCW
         private var glCullMode:uint = GL_BACK
         private var lightingStates:Vector.<LightingState> = new Vector.<LightingState>()
+
+        private var activeTexture:TextureInstance
+        private var textures:Dictionary = new Dictionary()
         private var texID:uint = 1 // so we have 0 as non-valid id
+
+        private var activeFramebuffer:FramebufferInstance
+        private var framebuffers:Dictionary = new Dictionary()
+        private var framebufferID:uint = 1
+
+        private var shaders:Dictionary = new Dictionary()
+        private var shaderID:uint = 1
+
+        private var programs:Dictionary = new Dictionary()
+        private var programID:uint = 1
+        private var activeProgramInstance:ProgramInstance = null;
+
+        private var variableHandles:Dictionary = new Dictionary()
+        private var variableID:uint = 1
+
+        private var vertexBuffers:Vector.<VertexBuffer3D> = new <VertexBuffer3D>[];
+        private var indexBuffer:VertexBuffer3D = null;
+
+        private var buffers:Dictionary = new Dictionary()
+        private var bufferID:uint = 1
+        private var activeArrayBuffer:BufferInstance = null
+        private var activeElementArrayBuffer:BufferInstance = null
+
         private var shininessVec:Vector.<Number> = new <Number>[0.0, 0.0, 0.0, 0.0]
         private var globalAmbient:Vector.<Number> = new <Number>[0.2, 0.2, 0.2, 1]
         private var polygonOffsetValue:Number = -0.0005
@@ -141,12 +168,10 @@ package GLS3D
         private var vertexAttributesDirty:Boolean = true
         private var activeCommandList:CommandList = null
         private var commandLists:Vector.<CommandList> = null
-        private var textures:Dictionary = new Dictionary()
         private var vertexBufferAttributes:Vector.<VertexBufferAttribute> = new Vector.<VertexBufferAttribute>(8)
         private var textureUnits:Array = new Array(32)
         private var activeProgram:ProgramInstance
         private var activeTextureUnit:uint = 0
-        private var activeTexture:TextureInstance
         private var textureSamplers:Vector.<TextureInstance> = new Vector.<TextureInstance>(8)
         private var textureSamplerIDs:Vector.<uint> = new Vector.<uint>(8)
         private var vertexBufferObjects:Vector.<VertexBuffer3D> = new Vector.<VertexBuffer3D>()
@@ -163,22 +188,23 @@ package GLS3D
         private var contextMaterial:Material = new Material(true)
         private var cubeVertexData:Vector.<Number>;
         private var cubeVertexBuffer:VertexBuffer3D = null;
+        private var agalAssembler:AGALMiniAssembler = null
 
         public static function init(context:Context3D, log:Object, stage:Stage):void
         {
             _instance = new GLAPI(context, log, stage)
             if (log) log.send("GLAPI initialized.")
         }
-        
+
         public static function get instance():GLAPI
         {
             if (!_instance)
             {
-                trace("Instance is null, did you forget calling GLAPI.init() in AlcConsole.as?") 
+                trace("Instance is null, did you forget calling GLAPI.init() in AlcConsole.as?")
             }
             return _instance
         }
-        
+
         public function send(value:String):void
         {
             if (log)
@@ -193,11 +219,11 @@ package GLS3D
                     "[ " + data[2].toFixed(3) + ", " + data[6].toFixed(3) + ", " + data[10].toFixed(3) + ", " + data[14].toFixed(3) + " ]\n" +
                     "[ " + data[3].toFixed(3) + ", " + data[7].toFixed(3) + ", " + data[11].toFixed(3) + ", " + data[15].toFixed(3) + " ]")
         }
-        
+
         // ======================================================================
         //  Polygon Offset
         // ----------------------------------------------------------------------
- 
+
         public function glPolygonMode(face:uint, mode:uint):void
         {
             switch(mode)
@@ -212,7 +238,7 @@ package GLS3D
                     // GL_FILL!
             }
         }
-        
+
         public function glPolygonOffset(factor:Number, units:Number):void
         {
             offsetFactor = factor
@@ -236,12 +262,12 @@ package GLS3D
         // ======================================================================
         //  Alpha Testing
         // ----------------------------------------------------------------------
-        
+
         public function glAlphaFunc(func:uint, ref:Number):void
         {
             //TODO: fixme
         }
-            
+
         private function setVector(vec:Vector.<Number>, x:Number, y:Number, z:Number, w:Number):void
         {
             vec[0] = x
@@ -249,7 +275,7 @@ package GLS3D
             vec[2] = z
             vec[3] = w
         }
-        
+
         private function copyVector(dest:Vector.<Number>, src:Vector.<Number>):void
         {
             dest[0] = src[0]
@@ -257,7 +283,7 @@ package GLS3D
             dest[2] = src[2]
             dest[3] = src[3]
         }
-        
+
         public function glMaterial(face:uint, pname:uint, r:Number, g:Number, b:Number, a:Number):void
         {
             // if pname == GL_SPECULAR, then "r" is shininess.
@@ -273,8 +299,8 @@ package GLS3D
             {
                 material = contextMaterial
             }
-            
-            
+
+
             switch (pname)
             {
                 case GL_AMBIENT:
@@ -294,7 +320,7 @@ package GLS3D
                         material.ambient = new <Number>[r, g, b, a]
                     else
                         setVector(material.ambient, r, g, b, a)
-                    
+
                     if (!material.diffuse)
                         material.diffuse = new <Number>[r, g, b, a]
                     else
@@ -331,15 +357,15 @@ package GLS3D
                         else
                             clearGLState(ENABLE_SEPSPEC_OFFSET)
                    break
-                
+
                 // unsupported for now
-                case GL_LIGHT_MODEL_TWO_SIDE: 
+                case GL_LIGHT_MODEL_TWO_SIDE:
                 case GL_LIGHT_MODEL_AMBIENT:
                 case GL_LIGHT_MODEL_LOCAL_VIEWER:
                 default:
                     break
             }
-            
+
             if (log) log.send("glLightModeli() not yet implemented")
         }
 
@@ -351,11 +377,11 @@ package GLS3D
                 if (log) log.send("glLight(): light index " + lightIndex + " out of bounds")
                 return
             }
-            
+
             var l:Light = lights[lightIndex]
             if (!l)
                 l = lights[lightIndex] = new Light(true, lightIndex == 0)
-            
+
             switch (pname)
             {
                 case GL_AMBIENT:
@@ -444,18 +470,18 @@ package GLS3D
                     if (log) log.send("[NOTE] Unsupported glGetFloatv call with 0x" + pname.toString(16))
             }
         }
-       
+
         public function glClipPlane(plane:uint, a:Number, b:Number, c:Number, d:Number):void
         {
             if (log) log.send("[NOTE] glClipPlane called for plane 0x" + plane.toString(16) + ", with args " + a + ", " + b + ", " + c + ", " + d)
             var index:int = plane - GL_CLIP_PLANE0
-            
+
             // Convert coordinates to eye space (modelView) before storing
             var m:Matrix3D = modelViewStack[modelViewStack.length - 1].clone()
             m.invert()
             m.transpose()
             var result:Vector3D = m.transformVector(new Vector3D(a, b, c, d))
-            
+
             clipPlanes[ index * 4 + 0 ] = result.x
             clipPlanes[ index * 4 + 1 ] = result.y
             clipPlanes[ index * 4 + 2 ] = result.z
@@ -470,8 +496,8 @@ package GLS3D
             var p:Matrix3D = projectionStack[projectionStack.length - 1].clone()
             var t:Matrix3D = textureStack[textureStack.length - 1].clone()
             //m.append(p)
-            
-            
+
+
             p.prepend(m)
             var invM:Matrix3D = m.clone()
             invM.invert()
@@ -482,12 +508,12 @@ package GLS3D
                 // Adjust the projection matrix to give us z offset
                 if (log)
                     log.send("Applying polygon offset")
-                
+
                 modelToClipSpace = p.clone()
                 modelToClipSpace.appendTranslation(0, 0, polygonOffsetValue)
             }
-            
-            
+
+
             // Current active textures ??
             var ti:TextureInstance
             var i:int
@@ -503,7 +529,7 @@ package GLS3D
                     if(log) log.send("setTexture " + i + " -> 0")
                 }
             }
-            
+
             var textureStatInvalid:Boolean = false;
             const count:int = cl.commands.length
             var command:Object
@@ -513,10 +539,10 @@ package GLS3D
                 var stateChange:ContextState = command as ContextState
                 if (stateChange)
                 {
-                
+
                     // We execute state changes before stream changes, so
                     // we must have a state change
-    
+
                     // Execute state changes
                     if (contextEnableTextures && stateChange.textureSamplers)
                     {
@@ -538,7 +564,7 @@ package GLS3D
                             }
                         }
                     }
-                    
+
                     var stateMaterial:Material = stateChange.material
                     if (stateMaterial)
                     {
@@ -558,10 +584,10 @@ package GLS3D
                 var stream:VertexStream = command as VertexStream
                 if (stream)
                 {
-                    
+
                     // Make sure we have the right program, and see if we need to updated it if some state change requires it
                     ensureProgramUpToDate(stream)
-                    
+
                     // If the program has no textures, then disable them all:
                     if (!stream.program.hasTexture)
                     {
@@ -571,7 +597,7 @@ package GLS3D
                             if(log) log.send("setTexture " + i + " -> 0")
                         }
                     }
-                    
+
                     context.setProgram(stream.program.program)
 
                     // FIXME (egeorgie): do we need to do this after setting every program, or just once after we calculate the matrix?
@@ -604,10 +630,10 @@ package GLS3D
                         if (!clipPlaneEnabled[i])
                             context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 18 + i, zeroes, 1)
                     }
-                    
+
                     // Calculate origin of eye-space
                     context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 24, new <Number>[0, 0, 0, 1], 1)
-                    
+
                     // Upload material components
                     context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 25, contextMaterial.ambient, 1)
                     context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 26, contextMaterial.diffuse, 1)
@@ -615,12 +641,12 @@ package GLS3D
                     shininessVec[0] = contextMaterial.shininess
                     context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 28, shininessVec, 1)
                     context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 29, contextMaterial.emission, 1)
-                    
+
                     // Upload lights
                     // FIXME (klin): will be per light...for now, fake a light and assume local viewer.
                     // default global light:
                     context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 30, globalAmbient, 1)
-                    
+
                     // light constants
                     for (i = 0; i < 8; i++)
                     {
@@ -644,7 +670,7 @@ package GLS3D
                     }
 
                     // Map the Vertex buffer
-                    
+
                     // position
                     context.setVertexBufferAt(0, stream.vertexBuffer, 0 /*bufferOffset*/, Context3DVertexBufferFormat.FLOAT_3)
 
@@ -652,22 +678,22 @@ package GLS3D
                     if (0 != (stream.program.vertexStreamUsageFlags & VertexBufferBuilder.HAS_COLOR))
                         context.setVertexBufferAt(1, stream.vertexBuffer, 3 /*bufferOffset*/, Context3DVertexBufferFormat.FLOAT_4)
                     else
-                        context.setVertexBufferAt(1, null) 
+                        context.setVertexBufferAt(1, null)
 
                     // normal
                     if (0 != (stream.program.vertexStreamUsageFlags & VertexBufferBuilder.HAS_NORMAL))
                         context.setVertexBufferAt(2, stream.vertexBuffer, 7 /*bufferOffset*/, Context3DVertexBufferFormat.FLOAT_3)
                     else
-                        context.setVertexBufferAt(2, null) 
+                        context.setVertexBufferAt(2, null)
 
                     // texture coords
                     if (0 != (stream.program.vertexStreamUsageFlags & VertexBufferBuilder.HAS_TEXTURE2D))
                         context.setVertexBufferAt(3, stream.vertexBuffer, 10 /*bufferOffset*/, Context3DVertexBufferFormat.FLOAT_2)
                     else
-                        context.setVertexBufferAt(3, null) 
+                        context.setVertexBufferAt(3, null)
 
                     context.drawTriangles(stream.indexBuffer)
-                    
+
                     // If we're executing on compilation, this may be an immediate command stream, so update the pool
                     if (cl.executeOnCompile)
                         immediateVertexBuffers.markInUse(stream.vertexBuffer)
@@ -680,7 +706,7 @@ package GLS3D
             if (log) log.send("glGenLists " + count)
             if (!commandLists)
                 commandLists = new Vector.<CommandList>()
-            
+
             var oldLength:int = commandLists.length
             commandLists.length = oldLength + count
             return oldLength
@@ -689,17 +715,17 @@ package GLS3D
         public function glMatrixMode(mode:uint):void
         {
             if (log) log.send("glMatrixMode \nSwitch stack to " + MATRIX_MODE[mode - GL_MODELVIEW])
-            
+
             switch (mode)
             {
-                case GL_MODELVIEW: 
+                case GL_MODELVIEW:
                     currentMatrixStack = modelViewStack
                 break
-                
+
                 case GL_PROJECTION:
                     currentMatrixStack = projectionStack
                 break
-                
+
                 case GL_TEXTURE:
                     currentMatrixStack = textureStack
                 break
@@ -708,13 +734,13 @@ package GLS3D
                     if (log) log.send("Unknown Matrix Mode " + mode)
             }
         }
-        
+
         public function glPushMatrix():void
         {
             if (log) log.send("glPushMatrix")
             currentMatrixStack.push(currentMatrixStack[currentMatrixStack.length - 1].clone())
         }
-        
+
         public function glPopMatrix():void
         {
             if (log) log.send("glPopMatrix")
@@ -724,21 +750,21 @@ package GLS3D
                 currentMatrixStack.push(new Matrix3D())
             }
         }
-        
+
         public function glLoadIdentity():void
         {
             if (log) log.send("glLoadIdentity")
             currentMatrixStack[currentMatrixStack.length - 1].identity()
         }
-        
+
         public function glOrtho(left:Number, right:Number, bottom:Number, top:Number, zNear:Number, zFar:Number):void
         {
             if (log) log.send("glOrtho: left = " + left + ", right = " + right + ", bottom = " + bottom + ", top = " + top + ", zNear = " + zNear + ", zFar = " + zFar)
-            
+
             var tx:Number = - (right + left) / (right - left)
             var ty:Number = - (top + bottom) / (top - bottom)
             var tz:Number = - (zFar + zNear) / (zFar - zNear)
-            
+
             // in column-major order...
             var m:Matrix3D = new Matrix3D( new <Number>[
                                             2 / (right - left), 0, 0, 0,
@@ -746,31 +772,31 @@ package GLS3D
                                             0, 0, - 2 / ( zFar - zNear), 0,
                                             tx, ty, tz, 1]
                 )
-            
+
             // Multiply current matrix by the ortho matrix
             currentMatrixStack[currentMatrixStack.length - 1].prepend(m)
         }
-        
+
         public function glTranslate(x:Number, y:Number, z:Number):void
         {
             if (log) log.send("glTranslate")
             currentMatrixStack[currentMatrixStack.length - 1].prependTranslation(x, y, z)
         }
-        
+
         public function glRotate(degrees:Number, x:Number, y:Number, z:Number):void
         {
             if (log) log.send("glRotate")
             currentMatrixStack[currentMatrixStack.length - 1].prependRotation(degrees, new Vector3D(x, y, z))
         }
-        
+
         public function glScale(x:Number, y:Number, z:Number):void
         {
             if (log) log.send("glScale")
-            
+
             if (x != 0 && y != 0 && z != 0)
             currentMatrixStack[currentMatrixStack.length - 1].prependScale(x, y, z)
         }
-        
+
         public function glMultMatrix(ram:ByteArray, floatArray:Boolean):void
         {
             if (log) log.send("glMultMatrix floatArray: " + floatArray.toString())
@@ -781,7 +807,7 @@ package GLS3D
             var m:Matrix3D = new Matrix3D(v)
             currentMatrixStack[currentMatrixStack.length - 1].prepend(m)
         }
-        
+
         public function multMatrix(m:Matrix3D):void
         {
             currentMatrixStack[currentMatrixStack.length - 1].prepend(m)
@@ -811,7 +837,7 @@ package GLS3D
         public function glDepthFunc(mode:uint):void
         {
             if (log) log.send("glDepthFunc( " + COMPARE_MODE[mode - GL_NEVER] + " ), currently contextEnableDepth = " + contextEnableDepth)
-        
+
             contextDepthFunction = convertCompareMode(mode)
             if (contextEnableDepth)
                 context.setDepthTest(contextDepthMask, contextDepthFunction)
@@ -844,25 +870,25 @@ package GLS3D
         public function glTexGeni(coord:uint, pname:uint, param:uint):void
         {
             if (log) log.send("glTexGeni( " + GL_COORD_NAME[coord - GL_S] + ", " + GL_PARAM_NAME[pname - GL_TEXTURE_GEN_MODE] + ", " + texGenParamToString(param) + ")")
-            
+
             if (GL_T < coord)
             {
                 if (log) log.send("Unsupported " + GL_COORD_NAME[coord - GL_S])
                 return
             }
-            
+
             if (pname != GL_TEXTURE_GEN_MODE)
             {
                 if (log) log.send("Unsupported " + GL_PARAM_NAME[pname - GL_TEXTURE_GEN_MODE])
                 return
             }
-            
+
             switch (coord)
             {
                 case GL_S:
                     texGenParamS = param
                 break
-                
+
                 case GL_T:
                     texGenParamT = param
                 break
@@ -880,13 +906,13 @@ package GLS3D
                 generateDLIndexData(mode, count, indexData)
                 indexBuffer = context.createIndexBuffer(indexData.length)
                 indexBuffer.uploadFromVector(indexData, 0, indexData.length)
-                
+
                 // Cache
                 sharedIndexBuffers[key] = indexBuffer
             }
             stream.indexBuffer = indexBuffer
         }
-        
+
         private function generateDLIndexData(mode:uint, count:int, indexData:Vector.<uint>):void
         {
             var i:int
@@ -894,13 +920,13 @@ package GLS3D
             var p1:int
             var p2:int
             var p3:int
-            
+
             switch (mode)
             {
                 case GL_QUADS:
                     // Assert count == n * 4, n >= 1
                     // for each group of 4 vertices 0, 1, 2, 3 draw two triangles 0, 1, 2 and 0, 2, 3
-                    
+
                     for (i = 0; i < count; i += 4)
                     {
                         indexData.push(i)
@@ -911,14 +937,14 @@ package GLS3D
                         indexData.push(i + 2)
                         indexData.push(i + 3)
                     }
-                    
+
                 break
-                
+
                 case GL_QUAD_STRIP:
                     // Assert count == n * 2, n >= 2
                     // Draws a connected group of quadrilaterals. One quadrilateral is defined for each pair of vertices presented after the first pair.
                     // Vertices 2n - 2, 2n - 1, 2n + 1, 2n  define a quadrilateral.
-                    
+
                     for (i = 0; i < count - 2; i += 2)
                     {
                         // The four corners of the quadrilateral are
@@ -927,17 +953,17 @@ package GLS3D
                         p1 = i + 1
                         p2 = i + 2
                         p3 = i + 3
-                        
+
                         // Draw as two triangles 0, 1, 2 and 2, 1, 3
                         indexData.push(p0)
                         indexData.push(p1)
                         indexData.push(p2)
-                        
+
                         indexData.push(p2)
                         indexData.push(p1)
                         indexData.push(p3)
                     }
-                    
+
                 break
 
                 case GL_TRIANGLES:
@@ -971,7 +997,7 @@ package GLS3D
                     {
                         p0 = i + 1
                         p1 = i + 2
-                        
+
                         indexData.push(0)
                         indexData.push(p0)
                         indexData.push(p1)
@@ -987,19 +1013,104 @@ package GLS3D
             }
         }
 
-        public function glGenBuffers(count:uint, dataPtr:uint):void
+        public function glGenBuffers(length:uint):uint
         {
-            if(count != 1)
-                throw "unimplemented"
-
-            vertexBufferObjects.push(null); // will be created for real by glBufferData
-            CModule.write32(dataPtr, vertexBufferObjects.length - 1);
+            var result:uint = bufferID
+            if (log2) log2.send("[IMPLEMENTED] glGenBuffers " + length + ", returning ID = [ " + result + ", " + (result + length - 1) + " ]\n")
+            for (var i:int = 0; i < length; i++) {
+                buffers[bufferID] = new BufferInstance()
+                buffers[bufferID].id = bufferID
+                bufferID++
+            }
+            return result
         }
 
-        public function glBufferData(target:uint, size:uint, dataPtr:uint, usage:uint):void
+        public function glBindBuffer(target:uint, buffer:uint):void
         {
-            if(target != GL_ARRAY_BUFFER)
-                throw "unimplemented"
+            if (log2) log2.send("[IMPLEMENTED] glBindBuffer target: " + target + " buffer: " + buffer + "\n")
+
+            if (target == GL_ARRAY_BUFFER) {
+                if (buffer != 0) {
+                    activeArrayBuffer = buffers[buffer]
+                    activeArrayBuffer.type = GL_ARRAY_BUFFER
+                } else {
+                    activeArrayBuffer = null
+                }
+            }
+
+            if (target == GL_ELEMENT_ARRAY_BUFFER) {
+                if (buffer != 0) {
+                    activeElementArrayBuffer = buffers[buffer]
+                    activeElementArrayBuffer.type = GL_ELEMENT_ARRAY_BUFFER
+                } else {
+                    activeElementArrayBuffer = null
+                }
+            }
+        }
+
+        public function glBufferData(target:uint, size:uint, data:ByteArray, dataPtr:uint, usage:uint):void
+        {
+            if (log2) log2.send("[IMPLEMENTED] glBufferData target: " + target + " size: " + size + "\n")
+
+            if (target == GL_ARRAY_BUFFER) {
+                // We can not create vertex buffer here because we don't know element size here
+                activeArrayBuffer.size = size
+                activeArrayBuffer.uploaded = false
+                activeArrayBuffer.data = new ByteArray()
+                if (dataPtr != 0) {
+                    activeArrayBuffer.data.writeBytes(data, dataPtr, size)
+                }
+            }
+
+            if (target == GL_ELEMENT_ARRAY_BUFFER) {
+                // In case of index bufer we can calculate number of elements from byte size
+                activeElementArrayBuffer.size = size
+                activeElementArrayBuffer.uploaded = true
+                activeElementArrayBuffer.indexBuffer = context.createIndexBuffer(size / 2)
+
+                if (dataPtr != 0) {
+                    activeElementArrayBuffer.indexBuffer.uploadFromByteArray(data, dataPtr, 0, size / 2)
+                } else {
+                    // In case of NULL data pointer just initialize buffer with zeroes
+                    var tmp:ByteArray = new ByteArray()
+                    for (var i:uint = 0; i < size; i++) {
+                        tmp.writeByte(0)
+                    }
+                    activeElementArrayBuffer.indexBuffer.uploadFromByteArray(tmp, 0, 0, size / 2)
+                }
+            }
+        }
+
+        public function glBufferSubData(target:uint, size:uint, data:ByteArray, dataPtr:uint):void
+        {
+            if (log2) log2.send("[IMPLEMENTED] glBufferSubData size: " + size + "\n")
+
+            if (target == GL_ARRAY_BUFFER) {
+                if (activeArrayBuffer.vertexBuffer) {
+                    activeArrayBuffer.vertexBuffer.uploadFromByteArray(data, dataPtr, 0, size / activeArrayBuffer.stride)
+                } else {
+                    activeArrayBuffer.uploaded = false
+                    activeArrayBuffer.data = new ByteArray()
+                    if (dataPtr != 0) {
+                        activeArrayBuffer.data.writeBytes(data, dataPtr, size)
+                    }
+                }
+            }
+
+            if (target == GL_ELEMENT_ARRAY_BUFFER) {
+                if (log2) log2.send("[IMPLEMENTED] glBufferSubData activeElementArrayBuffer: " + activeElementArrayBuffer + "\n")
+
+                if (activeElementArrayBuffer.indexBuffer) {
+                    activeElementArrayBuffer.indexBuffer.uploadFromByteArray(data, dataPtr, 0, size / 2)
+                } else {
+                    // In normal case we should never get here
+                    activeElementArrayBuffer.uploaded = false
+                    activeElementArrayBuffer.data = new ByteArray()
+                    if (dataPtr != 0) {
+                        activeElementArrayBuffer.data.writeBytes(data, dataPtr, size)
+                    }
+                }
+            }
         }
 
         var debugCubeStream:VertexStream
@@ -1031,7 +1142,7 @@ package GLS3D
             }
 
             cl.commands.push(debugCubeStream)
-            
+
             //if (log) log.send("========== DEBUG CUBE >>")
             executeCommandList(cl)
             //if (log) log.send("========== DEBUG CUBE <<")
@@ -1044,32 +1155,32 @@ package GLS3D
             if (log) log.send("glEnd()")
 
             // FIXME (egeorgie): refactor into the VertexBufferbuilder
-            const data32PerVertex:int = 12 // x, y, z,  r, g, b, a,  nx, ny, nz, tx, ty 
-            
+            const data32PerVertex:int = 12 // x, y, z,  r, g, b, a,  nx, ny, nz, tx, ty
+
             // Number of Vertexes
             if (count == 0)
             {
                 if (log) log.send("0 vertices, no-op")
                 return
             }
-            
+
             var b:VertexBuffer3D
             if (activeCommandList)
             {
                 b = this.context.createVertexBuffer(count, data32PerVertex)
                 b.uploadFromByteArray(data, dataPtr, 0, count)
             }
-            else 
+            else
             {
                 b = immediateVertexBuffers.acquire(dataHash, count, data, dataPtr)
                 if (!b)
                 {
                     b = immediateVertexBuffers.allocateOrReuse(dataHash, count, data, dataPtr, context)
                 }
-            }       
-            
+            }
+
             var cl:CommandList = activeCommandList
-            
+
             // If we don't have a list, create a temporary one and execute it on glEndList()
             if (!cl)
             {
@@ -1078,18 +1189,18 @@ package GLS3D
                 cl.commands.length = 0
                 cl.activeState = null
             }
-            
+
             var stream:VertexStream = new VertexStream()
             stream.vertexBuffer = b
             //stream.indexBuffer = indexBuffer
             stream.vertexFlags = flags
             stream.polygonOffset = isGLState(ENABLE_POLYGON_OFFSET)
-            
+
             setupIndexBuffer(stream, mode, count)
-            
+
             // Remember whether we need to generate texture coordiantes on the fly,
             // we'll use that value later on to pick the right shader when we render the list
-            
+
             if (enableTexGenS)
             {
                 if (texGenParamS == GL_SPHERE_MAP)
@@ -1097,7 +1208,7 @@ package GLS3D
                 else
                     if (log) log.send("[Warning] Unsupported glTexGen mode for GL_S: 0x" + texGenParamS.toString(16))
             }
-            
+
             if (enableTexGenT)
             {
                 if (texGenParamT == GL_SPHERE_MAP)
@@ -1112,26 +1223,26 @@ package GLS3D
                 cl.commands.push(cl.activeState)
                 cl.activeState = null
             }
-            
+
             cl.commands.push(stream)
-            
+
             if (!activeCommandList)
             {
                 if (log) log.send("Rendering Immediate Vertex Stream ")
                 executeCommandList(cl)
             }
         }
-        
+
         private function setGLState(bit:uint):void
         {
             glStateFlags |= (1 << bit)
         }
-        
+
         private function clearGLState(bit:uint):void
         {
             glStateFlags &= ~(1 << bit)
         }
-        
+
         private function isGLState(bit:uint):Boolean
         {
             return 0 != (glStateFlags & (1 << bit))
@@ -1186,33 +1297,33 @@ package GLS3D
                         //                (ti.mipLevels > 1 ? 1 : 0))
                     //}
                 }
-                
+
             }
             return key
         }
-    
+
         private function ensureProgramUpToDate(stream:VertexStream):void
         {
             var flags:uint = stream.vertexFlags
             send("stream.vertexFlags is: " + flags)
             var key:String = getFixedFunctionPipelineKey(flags)
             if (log) log.send("program key is:" + key)
-            
+
             if (!stream.program || stream.program.key != key)
                 stream.program = getFixedFunctionPipelineProgram(key, flags)
         }
-        
+
         private function getFixedFunctionPipelineProgram(key:String, flags:uint):FixedFunctionProgramInstance
         {
             var p:FixedFunctionProgramInstance = fixed_function_programs[ key ]
-            
+
 
             if (!p)
             {
                 p = new FixedFunctionProgramInstance()
                 p.key = key
                 fixed_function_programs[key] = p
-                
+
                 p.program = context.createProgram()
                 p.hasTexture = contextEnableTextures &&
                                ((0 != (flags & VertexBufferBuilder.HAS_TEXTURE2D)) ||
@@ -1241,20 +1352,20 @@ package GLS3D
                 // vc12, 13, 14, 15 - texture matrix
                 // vc16 - (0, 0.5, 1.0, 2.0)
                 // vc17 - current color state (to be used when vertex color is not specified)
-                // vc18 - clipPlane0 
-                // vc19 - clipPlane1 
-                // vc20 - clipPlane2 
-                // vc21 - clipPlane3 
-                // vc22 - clipPlane4 
+                // vc18 - clipPlane0
+                // vc19 - clipPlane1
+                // vc20 - clipPlane2
+                // vc21 - clipPlane3
+                // vc22 - clipPlane4
                 // vc23 - clipPlane5
                 //
                 // v6, v7 - reserved for clipping
-                
-                // For all Fragment shaders 
+
+                // For all Fragment shaders
                 // v4 - reserved for specular color
-                // v5 - reserved for incoming color (either per-vertex color or the current color state) 
-                // v6 - dot(clipPlane0, pos), dot(clipPlane1, pos), dot(clipPlane2, pos), dot(clipPlane3, pos) 
-                // v7 - dot(clipPlane4, pos), dot(clipPlane5, pos) 
+                // v5 - reserved for incoming color (either per-vertex color or the current color state)
+                // v6 - dot(clipPlane0, pos), dot(clipPlane1, pos), dot(clipPlane2, pos), dot(clipPlane3, pos)
+                // v7 - dot(clipPlane4, pos), dot(clipPlane5, pos)
                 //
 
                 const _vertexShader_Color_Flags:uint = 0//VertexBufferBuilder.HAS_COLOR
@@ -1273,7 +1384,7 @@ package GLS3D
                     "add ft0.xyz, ft0.xyz, v4.xyz",                 // add specular color
                     "mov oc, ft0",           // output the interpolated color
                 ].join("\n")
-                
+
 
                 const _vertexShader_Texture_Flags:uint = VertexBufferBuilder.HAS_TEXTURE2D
                 const _vertexShader_Texture:String = [
@@ -1285,7 +1396,7 @@ package GLS3D
                     "tex ft0, v1, fs0 <2d, wrapMode, minFilter> ",     // sample the texture
                     "mul ft0, ft0, v5",                             // modulate with the interpolated color (hardcoding GL_TEXTURE_ENV_MODE to GL_MODULATE)
                     "add ft0.xyz, ft0.xyz, v4.xyz",                 // add specular color
-                    "mov oc, ft0",                                  // output interpolated color.                             
+                    "mov oc, ft0",                                  // output interpolated color.
                 ].join("\n")
 
 //                for(i=0 i<total i++)
@@ -1300,8 +1411,8 @@ package GLS3D
 //                    myTexCoord[i].s = reflectionVector.x * m + 0.5
 //                    myTexCoord[i].t = reflectionVector.y * m + 0.5
 //                }
-                
-                
+
+
                 // For all Vertex shaders:
                 //
                 // va0 - position
@@ -1315,21 +1426,21 @@ package GLS3D
                 // vc12, 13, 14, 15 - texture matrix
                 // vc16 - (0, 0.5, 1.0, 2.0)
                 //
-                
+
                 const _vertexShader_GenTexSphereST_Flags:uint = VertexBufferBuilder.HAS_NORMAL
                 const _vertexShader_GenTexSphereST:String = [
                     "m44 op, va0, vc0",     // multiply vertex by modelViewProjection
-                    
-                    "m44 vt0, va0, vc4",        // eyeVertex = vt0 = pos * modelView 
+
+                    "m44 vt0, va0, vc4",        // eyeVertex = vt0 = pos * modelView
                     "nrm vt0.xyz, vt0",         // normalize vt0
                     "m44 vt1, va2, vc8",        // eyeNormal = vt1 = normal * inverse modelView
                     "nrm vt1.xyz, vt1",
-                    
+
                     // vt2 = vt0 - vt1 * 2 * dot(vt0, vt1):
-                    "dp3 vt4.x, vt0, vt1",          // vt4.x = dot(vt0, vt1)     
+                    "dp3 vt4.x, vt0, vt1",          // vt4.x = dot(vt0, vt1)
                     "mul vt4.x, vt4.x, vc16.w",     // vt4.x *= 2.0
                     "mul vt4, vt1, vt4.x",   // vt4 = vt1 * 2.0 * dot (vt0, vt1)
-                    "sub vt2, vt0, vt4",    // 
+                    "sub vt2, vt0, vt4",    //
                     "add vt2.z, vt2.z, vc16.z", // vt2.z += 1.0
                     // vt2 is the reflectionVector now
 
@@ -1338,12 +1449,12 @@ package GLS3D
                     "sqt vt4.x, vt4.x",
                     "mul vt4.x, vt4.x, vc16.w",
                     "rcp vt4.x, vt4.x",
-                    // vt4.x is m now 
+                    // vt4.x is m now
 
                     // myTexCoord[i].s = reflectionVector.x * m + 0.5
                     // myTexCoord[i].t = reflectionVector.y * m + 0.5
                     "mul vt3.x, vt2.x, vt4.x",
-                    "add vt3.x, vt3.x, vc16.y",  // += 0.5 
+                    "add vt3.x, vt3.x, vc16.y",  // += 0.5
                     "mul vt3.y, vt2.y, vt4.x",
                     "add vt3.y, vt3.y, vc16.y",  // += 0.5
 
@@ -1352,16 +1463,16 @@ package GLS3D
                     "mov vt3.w, vc16.x",
 
                     // copy the texture coordiantes to be interpolated per fragment
-                    "mov v1, vt3",          
+                    "mov v1, vt3",
                    // "mov v1, va2",          // copy the vertex color to be interpolated per fragment
                 ].join("\n")
-                
+
                 const _fragmentShader_GenTexSphereST:String = [
-                    "tex ft0, v1, fs0 <2d, wrapMode, minFilter> ",     // sample the texture 
+                    "tex ft0, v1, fs0 <2d, wrapMode, minFilter> ",     // sample the texture
                     "mul ft0, ft0, v5",                             // modulate with the interpolated color (hardcoding GL_TEXTURE_ENV_MODE to GL_MODULATE)
                     "add ft0.xyz, ft0.xyz, v4.xyz",                 // add specular color
                     "mov oc, ft0",
-                ].join("\n")   
+                ].join("\n")
 
                 var vertexShader:String
                 var fragmentShader:String
@@ -1381,19 +1492,19 @@ package GLS3D
                         if (log) log.send("using texture shaders...")
                         vertexShader = _vertexShader_Texture
                         p.vertexStreamUsageFlags = _vertexShader_Texture_Flags
-    
+
                         if (textureParams.GL_TEXTURE_WRAP_S != textureParams.GL_TEXTURE_WRAP_T)
                         {
-                            if (log) log.send("[Warning] Unsupported different texture addressing modes for S and T: 0x" + 
+                            if (log) log.send("[Warning] Unsupported different texture addressing modes for S and T: 0x" +
                                 textureParams.GL_TEXTURE_WRAP_S.toString(16) + ", 0x" +
                                 textureParams.GL_TEXTURE_WRAP_T.toString(16))
                         }
-    
+
                         if (textureParams.GL_TEXTURE_WRAP_S != GL_REPEAT && textureParams.GL_TEXTURE_WRAP_S != GL_CLAMP)
                         {
                             if (log) log.send("[Warning] Unsupported texture wrap mode: 0x" + textureParams.GL_TEXTURE_WRAP_S.toString(16))
                         }
-    
+
                         var wrapModeS:String = (textureParams.GL_TEXTURE_WRAP_S == GL_REPEAT) ? "repeat" : "clamp"
                         fragmentShader = _fragmentShader_Texture.replace("wrapMode", wrapModeS)
 
@@ -1415,15 +1526,15 @@ package GLS3D
                     p.vertexStreamUsageFlags = _vertexShader_Color_Flags
                     fragmentShader = _fragmentShader_Color
                 }
-                
+
                 // CALCULATE VERTEX COLOR
                 var useVertexColor:Boolean = (0 != (flags & VertexBufferBuilder.HAS_COLOR))
                 if (useVertexColor)
                     p.vertexStreamUsageFlags |= VertexBufferBuilder.HAS_COLOR
-                
+
                 if (contextEnableLighting)
                 {
-                    
+
                     // va0 - position
                     // va1 - color
                     // va2 - normal
@@ -1456,23 +1567,23 @@ package GLS3D
                     // vc59-62 - light 7
                     //
                     // v6, v7 - reserved for clipping
-                    
-                    // vertex color = 
-                    //    emissionmaterial + 
+
+                    // vertex color =
+                    //    emissionmaterial +
                     //    ambientlight model * ambientmaterial +
                     //    [ambientlight *ambientmaterial +
                     //     (max { L · n , 0} ) * diffuselight * diffusematerial +
-                    //     (max { s · n , 0} )shininess * specularlight * specularmaterial ] per light. 
+                    //     (max { s · n , 0} )shininess * specularlight * specularmaterial ] per light.
                     // vertex alpha = diffuse material alpha
-                    
+
                     p.vertexStreamUsageFlags |= VertexBufferBuilder.HAS_NORMAL
-                    
+
                     // matColorReg == ambient and diffuse material color to use
                     var matAmbReg:String = (contextColorMaterial) ?
                                                 ((useVertexColor) ? "va1" : "vc17") : "vc25"
-                    var matDifReg:String = (contextColorMaterial) ? 
+                    var matDifReg:String = (contextColorMaterial) ?
                                                 ((useVertexColor) ? "va1" : "vc17") : "vc26"
-                    
+
                     // FIXME (klin): Need to refactor to take into account multiple lights...
                     /*var lightingShader:String = [
                         "mov vt0, vc29",                   // start with emission material
@@ -1482,14 +1593,14 @@ package GLS3D
                         "sat vt0, vt0",                    // clamp to 0 or 1
                         "mov v5, vt0",
                     ].join("\n")*/
-                    
+
                     // v5 = vt3 will be used to calculate the final color.
                     // v4 = vt7 is the specular color if contextSeparateSpecular == true
                     //      otherwise, specular is included in v5.
                     var lightingShader:String = [
                         // init v4 to 0
                         "mov v4.xyzw, vc16.xxxx",
-                        
+
                         // calculate some useful constants
                         // vt0 = vertex in eye space
                         // vt1 = normalized normal vector in eye space
@@ -1498,37 +1609,37 @@ package GLS3D
                         "mov vt1, va2",                    // vt1 = normal vector
                         "m33 vt1.xyz, vt1, vc4",           // vt1 = normal vector in eye space
                         "nrm vt1.xyz, vt1",                // vt1 = n = norm(normal vector)
-                        "neg vt2, vt0",                    // vt2 = V = origin - vertex in eye space  
+                        "neg vt2, vt0",                    // vt2 = V = origin - vertex in eye space
                         "nrm vt2.xyz, vt2",                // vt2 = norm(V)
-                        
+
                         // general lighting
                         "mov vt3, vc29",                   // start with emission material
                         "mov vt4, vc30",                   // vt4 = global ambient light
                         "mul vt4, vt4, " + matAmbReg,      // global ambientlight model * ambient material
                         "add vt3, vt3, vt4",               // add ambient color from global light
-                        
+
                         // Light specific calculations
-                        
+
                         // Initialize temp for specular
                         "mov vt7, vc16.xxxx",              // vt7 is specular, will end in v4
-                        
+
                         //   ambient color
 //                        "mov vt4, vc32",
 //                        "mul vt4, vt4, " + matAmbReg,      // ambientlight0 * ambientmaterial
 //                        "add vt3, vt3, vt4",               // add ambient color from light0
-//                        
+//
 //                        //   diffuse color
 //                        "sub vt4, vc31, vt0",              // vt4 = L = light0 pos - vertex pos
 //                        "nrm vt4.xyz, vt4",                // vt4 = norm(L)
 //                        "mov vt5, vt1",
 //                        "dp3 vt5.x, vt4, vt5",             // vt5.x = L · n
 //                        "max vt5.x, vt5.x, vc16.x",        // vt5.x = max { L · n , 0}
-//                        "neg vt6.x, vt5.x",                // check if L · n is <= 0 
+//                        "neg vt6.x, vt5.x",                // check if L · n is <= 0
 //                        "slt vt6.x, vt6.x, vc16.x",
 //                        "mul vt5.xyz, vt5.xxx, vc33.xyz",  // vt5 = vt5.x * diffuselight0
 //                        "mul vt5, vt5, " + matDifReg,      // vt0 = vt0 * diffusematerial
 //                        "add vt3, vt3, vt5",               // add diffuse color from light0
-//                        
+//
 //                        //   specular color
 //                        "add vt5, vt4, vt2",               // vt5 = s = L + V
 //                        "nrm vt5.xyz, vt5",                // vt5 = norm(s)
@@ -1539,35 +1650,35 @@ package GLS3D
 //                        "mul vt5.xyz, vt5.xxx, vc34.xyz",  // vt5 = vt5.x * specularlight0
 //                        "mul vt5, vt5, vc27",              // vt5 = vt5 * specularmaterial
 //                        "mul vt5, vt5.xyz, vt6.xxx",       // specular = 0 if L · n is <= 0.
-                        
+
 //                        "sat vt5, vt5",
 //                        "mov v4, vt5",                     // specular is separate and added later.
 //
 //                        //"add vt3, vt3, vt5",               // add specular color from light0
-//                        
+//
 //                        // alpha determined by diffuse material
 //                        "mov vt3.w, " + matDifReg + ".w",  // alpha = diffuse material alpha
-//                        
+//
 //                        "sat vt3, vt3",                    // clamp to 0 or 1
 //                        "mov v5, vt3",                     // v5 = final color
                     ].join("\n")
-                    
+
                     if (!lightsEnabled[0] && !lightsEnabled[1])
                         if (log) log.send("GL_LIGHTING enabled, but no lights are enabled...")
-                    
+
                     // concatenate shader for each light
                     for (var i:int = 0; i < 8; i++)
                     {
                         if (!lightsEnabled[i])
                             continue
-                        
+
                         var l:Light = lights[i]
                         var starti:int = 31 + i*4
                         var lpos:String = "vc" + starti.toString()
                         var lamb:String = "vc" + (starti+1).toString()
                         var ldif:String = "vc" + (starti+2).toString()
                         var lspe:String = "vc" + (starti+3).toString()
-                        
+
     					var lightVectorAgalInstr:String;
 						if (l.type == Light.LIGHT_TYPE_DIRECTIONAL)
 						{
@@ -1583,19 +1694,19 @@ package GLS3D
                             "mov vt4, " + lamb,
                             "mul vt4, vt4, " + matAmbReg,      // ambientlight0 * ambientmaterial
                             "add vt3, vt3, vt4",               // add ambient color from light0
-                            
+
                             //   diffuse color
                             lightVectorAgalInstr,    		   // vt4 = L = light0 pos - vertex pos
                             "nrm vt4.xyz, vt4",                // vt4 = norm(L)
                             "mov vt5, vt1",
                             "dp3 vt5.x, vt4, vt5",             // vt5.x = L · n
                             "max vt5.x, vt5.x, vc16.x",        // vt5.x = max { L · n , 0}
-                            "neg vt6.x, vt5.x",                // check if L · n is <= 0 
+                            "neg vt6.x, vt5.x",                // check if L · n is <= 0
                             "slt vt6.x, vt6.x, vc16.x",
                             "mul vt5.xyz, vt5.xxx, " + ldif + ".xyz",  // vt5 = vt5.x * diffuselight0
                             "mul vt5, vt5, " + matDifReg,      // vt0 = vt0 * diffusematerial
                             "add vt3, vt3, vt5",               // add diffuse color from light0
-                            
+
                             //   specular color
                             "add vt5, vt4, vt2",               // vt5 = s = L + V
                             "nrm vt5.xyz, vt5",                // vt5 = norm(s)
@@ -1608,21 +1719,21 @@ package GLS3D
                             "mul vt5, vt5.xyz, vt6.xxx",       // specular = 0 if L · n is <= 0.
                             "add vt7, vt7, vt5",               // add specular to output (will be in v4)
                         ].join("\n")
-                        
+
                         lightingShader = lightingShader + "\n" + lightpiece
                     }
-                    
+
                     lightingShader = lightingShader + "\n" + [
                         "sat vt7, vt7",
                         "mov v4, vt7",                     // specular is separate and added later.
 
                         // alpha determined by diffuse material
                         "mov vt3.w, " + matDifReg + ".w",  // alpha = diffuse material alpha
-                        
+
                         "sat vt3, vt3",                    // clamp to 0 or 1
                         "mov v5, vt3",                     // v5 = final color
                     ].join("\n")
-                    
+
                     if (useVertexColor)
                         lightingShader = "mov vt0, va1\n" + lightingShader //HACK
                     vertexShader = lightingShader + "\n" + vertexShader
@@ -1655,28 +1766,28 @@ package GLS3D
                     // vc12, 13, 14, 15 - texture matrix
                     // vc16 - (0, 0.5, 1.0, 2.0)
                     // vc17 - current color state (to be used when vertex color is not specified)
-                    // vc18 - clipPlane0 
-                    // vc19 - clipPlane1 
-                    // vc20 - clipPlane2 
-                    // vc21 - clipPlane3 
-                    // vc22 - clipPlane4 
+                    // vc18 - clipPlane0
+                    // vc19 - clipPlane1
+                    // vc20 - clipPlane2
+                    // vc21 - clipPlane3
+                    // vc22 - clipPlane4
                     // vc23 - clipPlane5
                     //
                     // v6, v7 - reserved for clipping
-                    
-                    // For all Fragment shaders 
+
+                    // For all Fragment shaders
                     //
-                    // v6 - dot(clipPlane0, pos), dot(clipPlane1, pos), dot(clipPlane2, pos), dot(clipPlane3, pos) 
-                    // v7 - dot(clipPlane4, pos), dot(clipPlane5, pos) 
+                    // v6 - dot(clipPlane0, pos), dot(clipPlane1, pos), dot(clipPlane2, pos), dot(clipPlane3, pos)
+                    // v7 - dot(clipPlane4, pos), dot(clipPlane5, pos)
                     //
                     const clipVertex:String = [
                         "m44 vt0, va0, vc4",        // position in eye (modelVeiw) space
-                        "dp4 v6.x, vt0, vc18",       // calculate clipPlane0 
-                        "dp4 v6.y, vt0, vc19",       // calculate clipPlane1 
-                        "dp4 v6.z, vt0, vc20",       // calculate clipPlane2 
-                        "dp4 v6.w, vt0, vc21",       // calculate clipPlane3 
-                        "dp4 v7.x, vt0, vc22",       // calculate clipPlane4 
-                        "dp4 v7.yzw, vt0, vc23",       // calculate clipPlane5 
+                        "dp4 v6.x, vt0, vc18",       // calculate clipPlane0
+                        "dp4 v6.y, vt0, vc19",       // calculate clipPlane1
+                        "dp4 v6.z, vt0, vc20",       // calculate clipPlane2
+                        "dp4 v6.w, vt0, vc21",       // calculate clipPlane3
+                        "dp4 v7.x, vt0, vc22",       // calculate clipPlane4
+                        "dp4 v7.yzw, vt0, vc23",       // calculate clipPlane5
                     ].join("\n")
 
                     const clipFragment:String = [
@@ -1712,10 +1823,10 @@ package GLS3D
             // Change current color if we're not recording a command
             if (!activeCommandList)
             {
-                contextColor[0] = r                
-                contextColor[1] = g                
-                contextColor[2] = b                
-                contextColor[3] = alpha                
+                contextColor[0] = r
+                contextColor[1] = g
+                contextColor[2] = b
+                contextColor[3] = alpha
             }
         }
 
@@ -1727,7 +1838,7 @@ package GLS3D
             activeCommandList.executeOnCompile = (mode == GL_COMPILE_AND_EXECUTE)
             commandLists[id] = activeCommandList
         }
-    
+
         public function glEndList():void
         {
             // Make sure if we have any pending state changes, we push them as a command at the end of the list
@@ -1736,10 +1847,10 @@ package GLS3D
                 activeCommandList.commands.push(activeCommandList.activeState)
                 activeCommandList.activeState = null
             }
-            
+
             if (activeCommandList.executeOnCompile)
                 executeCommandList(activeCommandList)
-            
+
             // We're done with this list, it's no longer active
             activeCommandList = null
         }
@@ -1749,7 +1860,7 @@ package GLS3D
             if (log) log.send("glCallList")
             if (activeCommandList)
                 if (log) log.send("Warning: Calling a command list while building a command list not yet implemented.")
-            
+
             if (log) log.send("Rendering List " + id)
             executeCommandList(commandLists[id])
         }
@@ -1759,7 +1870,11 @@ package GLS3D
             // For the debug console
             _stage = stage
 
+            //this.log = new TraceLog()
+            //this.log2 = new TraceLog()
             this.context = context
+
+            agalAssembler = new AGALMiniAssembler()
 
             // id zero is null
             vertexBufferObjects.push(null);
@@ -1778,14 +1893,14 @@ package GLS3D
                         7,2,3,
                         7,6,2];
 
-            const vertices:Array = [    
+            const vertices:Array = [
                         [1.0,1.0,1.0],
                         [-1.0,1.0,1.0],
-                        [1.0,-1.0,1.0], 
-                        [-1.0,-1.0,1.0],    
+                        [1.0,-1.0,1.0],
+                        [-1.0,-1.0,1.0],
                         [1.0,1.0,-1.0],
-                        [-1.0,1.0,-1.0],    
-                        [1.0,-1.0,-1.0],    
+                        [-1.0,1.0,-1.0],
+                        [1.0,-1.0,-1.0],
                         [-1.0,-1.0,-1.0]];
 
             cubeVertexData = new Vector.<Number>();
@@ -1797,7 +1912,7 @@ package GLS3D
                 const v3:Array = vertices[indices[i+2]];
                 cubeVertexData.push(v1[0], v1[1], v1[2], 1, 1, 1, 1, 0, 0, 0, 0, 0);
                 cubeVertexData.push(v2[0], v2[1], v2[2], 1, 1, 1, 1, 0, 0, 0, 0, 0);
-                cubeVertexData.push(v3[0], v3[1], v3[2], 1, 1, 1, 1, 0, 0, 0, 0, 0);        
+                cubeVertexData.push(v3[0], v3[1], v3[2], 1, 1, 1, 1, 0, 0, 0, 0, 0);
             }
         }
 
@@ -1809,7 +1924,7 @@ package GLS3D
             if (mask & GL_COLOR_BUFFER_BIT) contextClearMask |= Context3DClearMask.COLOR
             if (mask & GL_STENCIL_BUFFER_BIT) contextClearMask |= Context3DClearMask.STENCIL
             if (mask & GL_DEPTH_BUFFER_BIT) contextClearMask |= Context3DClearMask.DEPTH
-            
+
             if (bgColorOverride)
             {
                 context.clear(overrideR / 255.0, overrideG / 255.0, overrideB / 255.0, overrideA / 255.0,
@@ -1824,17 +1939,17 @@ package GLS3D
             // Make sure the vertex buffer pool knows it's next frame already to enable recycling
             immediateVertexBuffers.nextFrame()
         }
-        
+
         public function glClearColor(red:Number, green:Number, blue:Number, alpha:Number):void
         {
             if (log) log.send("[IMPLEMENTED] glClearColor " + red + " " + green + " " + blue + " " + alpha + "\n")
-    
+
             contextClearR = red
             contextClearG = green
             contextClearB = blue
             contextClearA = alpha
         }
-        
+
         public function glActiveTexture(index:uint):void
         {
             var unitIndex:uint = index - GL_TEXTURE0
@@ -1845,39 +1960,46 @@ package GLS3D
                 // log.send( "[NOTE] Invalid texture unit requested " + uint)
             }
         }
-        
+
         public function glBindTexture(type:uint, texture:uint):void
         {
             textureSamplerIDs[activeTextureUnit] = texture
 
-            if(genOnBind){
+            //if(genOnBind){
+                /*
                 if(textures[texture] == null) {
                     textures[texture] = new TextureInstance()
                     textures[texture].texID = texture
-                }
-            } else if (texture == 0) {
+                }*/
+            //} else
+            if (texture == 0) {
+                textures[0] = new TextureInstance()
+                textures[0].texID = 0
+                textures[0].texture = context.createTexture(1, 1, Context3DTextureFormat.BGRA, false)
+
                 // FIXME (egeorgie): just set the sampler to null and clear the active texture params?
                 if (log) log.send("Trying bind the non-existent texture 0!")
                 return
             }
-            
-            if (log) log.send( "[IMPLEMENTED] glBindTexture " + type + " " + texture + ", tu: " + activeTextureUnit + "\n")
+
+            if (log2) log2.send( "[IMPLEMENTED] glBindTexture " + type + " " + texture + ", tu: " + activeTextureUnit + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glBindTexture Sampler " + texture + " resolves into " + textures[texture] + "\n")
 
             if (activeCommandList)
             {
                 if (log) log.send("Recording texture " + texture + " for the active list.")
-                
-                var activeState:ContextState = activeCommandList.ensureActiveState()                
+
+                var activeState:ContextState = activeCommandList.ensureActiveState()
                 activeState.textureSamplers[activeTextureUnit] = texture
-                
+
                 // FIXME (egeorgie): we should not execute here, but only while executing the lsit
                 // return
             }
-            
+
             activeTexture = textures[texture]
             activeTexture.boundType = type
             textureSamplers[activeTextureUnit] = activeTexture
-            
+
             if (type != GL_TEXTURE_2D && type != GL_TEXTURE_CUBE_MAP)
             {
                 if (log) log.send( "[NOTE] Unsupported texture type " + type + " for glBindTexture")
@@ -1888,7 +2010,7 @@ package GLS3D
         {
             switch (mode)
             {
-                case GL_FRONT: //log.send("culling=GL_FRONT") 
+                case GL_FRONT: //log.send("culling=GL_FRONT")
                     return frontFaceClockWise ? Context3DTriangleFace.FRONT : Context3DTriangleFace.BACK
                 case GL_BACK: //log.send("culling=GL_BACK")
                     return frontFaceClockWise ? Context3DTriangleFace.BACK : Context3DTriangleFace.FRONT
@@ -1906,14 +2028,14 @@ package GLS3D
 
             if (activeCommandList)
                 if (log) log.send("[Warning] Recording glCullMode as part of command list not yet implememnted")
-            
+
             this.glCullMode = mode
 
-            // culling affects the context3D stencil 
+            // culling affects the context3D stencil
             commitStencilState()
-            
+
             if (contextEnableCulling)
-                context.setCulling(disableCulling ? Context3DTriangleFace.NONE: glCullModeToContext3DTriangleFace(glCullMode, frontFaceClockWise))         
+                context.setCulling(disableCulling ? Context3DTriangleFace.NONE: glCullModeToContext3DTriangleFace(glCullMode, frontFaceClockWise))
         }
 
         public function glFrontFace(mode:uint):void
@@ -1922,14 +2044,14 @@ package GLS3D
 
             if (activeCommandList)
                 if (log) log.send("[Warning] Recording glFrontFace as part of command list not yet implememnted")
-            
+
             frontFaceClockWise = (mode == GL_CW)
-            
-            // culling affects the context3D stencil 
+
+            // culling affects the context3D stencil
             commitStencilState()
-            
+
             if (contextEnableCulling)
-                context.setCulling(disableCulling ? Context3DTriangleFace.NONE : glCullModeToContext3DTriangleFace(glCullMode, frontFaceClockWise))         
+                context.setCulling(disableCulling ? Context3DTriangleFace.NONE : glCullModeToContext3DTriangleFace(glCullMode, frontFaceClockWise))
         }
 
         public function glEnable(cap:uint):void
@@ -1946,7 +2068,7 @@ package GLS3D
                     {
                         contextEnableCulling = true
                         context.setCulling(disableCulling ? Context3DTriangleFace.NONE : glCullModeToContext3DTriangleFace(glCullMode, frontFaceClockWise))
-                        
+
                         // Stencil depends on culling
                         commitStencilState()
                     }
@@ -1979,15 +2101,15 @@ package GLS3D
                     if(!disableBlending)
                         context.setBlendFactors(contextSrcBlendFunc, contextDstBlendFunc)
                     break
-                
+
                 case GL_TEXTURE_GEN_S:
                     enableTexGenS = true
                 break
-                
+
                 case GL_TEXTURE_GEN_T:
                     enableTexGenT = true
                 break
-                
+
                 case GL_CLIP_PLANE0:
                 case GL_CLIP_PLANE1:
                 case GL_CLIP_PLANE2:
@@ -1998,22 +2120,22 @@ package GLS3D
                     clipPlaneEnabled[clipPlaneIndex] = true
                     setGLState(ENABLE_LIGHT_OFFSET + clipPlaneIndex)
                 break
-                
+
                 case GL_TEXTURE_2D:
                     contextEnableTextures = true
                     setGLState(ENABLE_TEXTURE_OFFSET)
                     break
-                
+
                 case GL_LIGHTING:
                     contextEnableLighting = true
                     setGLState(ENABLE_LIGHTING_OFFSET)
                     break
-                
+
                 case GL_COLOR_MATERIAL:
                     contextColorMaterial = true // default is GL_FRONT_AND_BACK and GL_AMBIENT_AND_DIFFUSE
                     setGLState(ENABLE_COLOR_MATERIAL_OFFSET)
                     break
-                
+
                 case GL_LIGHT0:
                 case GL_LIGHT1:
                 case GL_LIGHT2:
@@ -2030,17 +2152,17 @@ package GLS3D
                     lightsEnabled[lightIndex] = true
                     setGLState(ENABLE_LIGHT_OFFSET + lightIndex)
                     break
-                
+
                 case GL_POLYGON_OFFSET_FILL:
                     contextEnablePolygonOffset = true
                     setGLState(ENABLE_POLYGON_OFFSET)
                     break
-                
+
                 default:
                     if (log) log.send( "[NOTE] Unsupported cap for glEnable: 0x" + cap.toString(16) )
             }
         }
-        
+
         public function glDisable(cap:uint):void
         {
             if (log) log.send( "[IMPLEMENTED] glDisable 0x" + cap.toString(16) + "\n")
@@ -2089,7 +2211,7 @@ package GLS3D
                 case GL_TEXTURE_GEN_S:
                     enableTexGenS = false
                     break
-                
+
                 case GL_TEXTURE_GEN_T:
                     enableTexGenT = false
                     break
@@ -2104,22 +2226,22 @@ package GLS3D
                     clipPlaneEnabled[clipPlaneIndex] = false
                     clearGLState(ENABLE_LIGHT_OFFSET + clipPlaneIndex)
                     break
-                
+
                case GL_TEXTURE_2D:
                     contextEnableTextures = false
                     clearGLState(ENABLE_TEXTURE_OFFSET)
                     break
-               
+
                case GL_LIGHTING:
                    contextEnableLighting = false
                    clearGLState(ENABLE_LIGHTING_OFFSET)
                    break
-               
+
                case GL_COLOR_MATERIAL:
                    contextColorMaterial = false // default is GL_FRONT_AND_BACK and GL_AMBIENT_AND_DIFFUSE
                    clearGLState(ENABLE_COLOR_MATERIAL_OFFSET)
                    break
-               
+
                case GL_LIGHT0:
                case GL_LIGHT1:
                case GL_LIGHT2:
@@ -2132,12 +2254,12 @@ package GLS3D
                    lightsEnabled[lightIndex] = false
                    clearGLState(ENABLE_LIGHT_OFFSET + lightIndex)
                    break
-               
+
                case GL_POLYGON_OFFSET_FILL:
                    contextEnablePolygonOffset = false
                    clearGLState(ENABLE_POLYGON_OFFSET)
                    break
-                
+
                 default:
                     if (log) log.send( "[NOTE] Unsupported cap for glDisable: 0x" + cap.toString(16) )
             }
@@ -2147,25 +2269,25 @@ package GLS3D
         {
             if (log) log.send("glPushAttrib + 0x" + mask.toString(16))
             var bits:String = null
-            
+
             for (var i:int = 0; i < GL_ATTRIB_BIT.length; i++)
             {
                 if (mask & (1 << i))
                     bits = bits + ", " + GL_ATTRIB_BIT[i]
             }
-            
+
             if (mask & GL_LIGHTING_BIT)
             {
                 pushCurrentLightingState()
             }
-            
+
             if (log) log.send( "[NOTE] Unsupported attrib bits " + bits + " for glPushAttrib" )
         }
-        
+
         public function glPopAttrib():void
         {
             // only lighting state for now.
-            popCurrentLightingState()         
+            popCurrentLightingState()
         }
 
         private function pushCurrentLightingState():void
@@ -2174,7 +2296,7 @@ package GLS3D
             lState.enableColorMaterial = this.contextColorMaterial
             lState.enableLighting = this.contextEnableLighting
             lState.lightsEnabled = this.lightsEnabled.concat()
-            
+
             var newLights:Vector.<Light> = new Vector.<Light>(8)
             var lightsLength:int = this.lights.length
             for (var i:int = 0; i < lightsLength; i++)
@@ -2182,18 +2304,18 @@ package GLS3D
                 var l:Light = this.lights[i]
                 newLights[i] = (l) ? l.createClone() : null
             }
-            
+
             lState.lights = newLights
             lState.contextMaterial = this.contextMaterial.createClone()
             lightingStates.push(lState)
         }
-        
+
         private function popCurrentLightingState():void
         {
             var lState:LightingState = lightingStates.pop()
             if(lState == null) {
               if (log) log.send("[WARNING] Calling popCurrentLightingState with lighting state")
-              return   
+              return
             }
             this.contextColorMaterial = lState.enableColorMaterial
             this.contextEnableLighting = lState.enableLighting
@@ -2225,7 +2347,7 @@ package GLS3D
         public function glTexParameterf(target:uint, pname:uint, param:Number):void
         {
             if (log) log.send( "[IMPLEMENTED] glTexParameteri " + target + " 0x" + pname.toString(16) + " 0x" + param.toString(16) + "\n")
-            
+
             if (!activeTexture)
             {
                 if (log) log.send("[WARNING] Calling glTexParameteri with no active texture")
@@ -2257,7 +2379,7 @@ package GLS3D
         public function glTexParameteri(target:uint, pname:uint, param:int):void
         {
             if (log) log.send( "[IMPLEMENTED] glTexParameteri " + target + " 0x" + pname.toString(16) + " 0x" + param.toString(16) + "\n")
-            
+
             if (!activeTexture)
             {
                 if (log) log.send("[WARNING] Calling glTexParameteri with no active texture")
@@ -2275,26 +2397,26 @@ package GLS3D
                 case GL_TEXTURE_MAG_FILTER:
                     textureParams.GL_TEXTURE_MAG_FILTER = param
                 break
-                
+
                 case GL_TEXTURE_MIN_FILTER:
                     textureParams.GL_TEXTURE_MIN_FILTER = param
                 break
 
                 case GL_TEXTURE_WRAP_S:
                     textureParams.GL_TEXTURE_WRAP_S = param
-                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16)) 
+                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16))
                 break
-                
+
                 case GL_TEXTURE_WRAP_T:
                     textureParams.GL_TEXTURE_WRAP_T = param
-                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16)) 
+                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16))
                 break
-                
+
                 default:
                     if (log) log.send( "[NOTE] Unsupported pname 0x" + pname.toString(16) + " for glTexParameteri" + (target == GL_TEXTURE_2D ? "(2D)" : "(Cube)"))
             }
         }
-        
+
         private function pixelTypeToString(type:uint):String
         {
             if (type == GL_BITMAP)
@@ -2313,10 +2435,10 @@ package GLS3D
             var pixelCount:int = width * height
             var dst:ByteArray = new ByteArray()
             dst.length = pixelCount * 4 // BGRA is 4 bytes
-            
+
             var originalPosition:uint = src.position
             src.position = srcOffset
-            
+
             var b:int = 0
             var g:int = 0
             var r:int = 0
@@ -2333,7 +2455,7 @@ package GLS3D
                         b = src.readByte()
                         a = src.readByte()
                     break
-                    
+
                     case GL_RGB:
                         r = src.readByte()
                         g = src.readByte()
@@ -2344,7 +2466,7 @@ package GLS3D
                         if (log) log.send("[Warning] Unsupported texture format: " + PIXEL_FORMAT[srcFormat - GL_COLOR_INDEX])
                         return dst
                 }
-                
+
                 // BGRA
                 dst.writeByte(b)
                 dst.writeByte(g)
@@ -2359,7 +2481,7 @@ package GLS3D
 
         public function glTexSubImage2D(target:uint, level:int, xoff:int, yoff:int, width:int, height:int, format:uint, imgType:uint, ptr:uint, ram:ByteArray):void
         {
-            if (log) log.send( "glTexSubImage2D " + target + " l:" + level + " " + xoff + " " + yoff + " " + width + "x" + height +  
+            if (log) log.send( "glTexSubImage2D " + target + " l:" + level + " " + xoff + " " + yoff + " " + width + "x" + height +
                       PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " + ptr.toString(16) + "\n")
 
             if(activeTexture && activeTexture.texture) {
@@ -2373,7 +2495,12 @@ package GLS3D
 
         public function glTexImage2D(target:uint, level:int, intFormat:int, width:int, height:int, border:int, format:uint, imgType:uint, ptr:uint, ram:ByteArray):void
         {
-            if (log) log.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] + " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " + 
+            if (width == 1 && height == 1) {
+                if (log2) log2.send("[IMPLEMENTED] glTexImage2D does not support 1x1 textures - No-Op");
+                return;
+            }
+
+            if (log2) log2.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] + " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " +
                       PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " + imgType.toString(16) + "\n")
 
             if (intFormat == GL_LUMINANCE)
@@ -2382,15 +2509,16 @@ package GLS3D
                 width = width/2
                 height = height/2
             }
-            
-            if (width == 0 || height == 0) 
+
+            if (width == 0 || height == 0)
                 return
-            
+
             // Context3D only supports BGRA and COMPRESSED formats
             var data:ByteArray
             var dataOffset:uint
             if (format != GL_BGRA)
             {
+                if (log2) log2.send( "[IMPLEMENTED] glTexImage2D: Converting to BGRA" )
                 // Convert the texture format
                 data = convertPixelDataToBGRA(width, height, format, ram, ptr)
                 dataOffset = 0
@@ -2410,12 +2538,12 @@ package GLS3D
             {
                 createCubeTexture(width, target, level, data, dataOffset)
             }
-            else 
+            else
             {
-                if (log) log.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D")
+                if (log2) log2.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D")
             }
         }
-        
+
         public function glCompressedTexImage2D(target:uint, level:int, intFormat:uint, width:int, height:int, border:int, imageSize:int, ptr:uint, ram:ByteArray):void
         {
             // Create appropriate texture type and upload data.
@@ -2459,12 +2587,390 @@ package GLS3D
             textures[texid] = null // TODO: fix things so we can eventually reuse textureIDs
         }
 
+        public function glGenFramebuffers(length:uint):uint
+        {
+            var result:uint = framebufferID
+            if (log2) log2.send( "[IMPLEMENTED] glGenFramebuffers " + length + ", returning ID = [ " + result + ", " + (result + length - 1) + " ]\n")
+            for (var i:int = 0; i < length; i++) {
+                framebuffers[framebufferID] = new FramebufferInstance()
+                framebuffers[framebufferID].id = framebufferID
+                framebufferID++
+            }
+            return result
+        }
+
+        public function glBindFramebuffer(target:uint, framebuffer:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glBindFramebuffer " + target + " " + framebuffer + "\n")
+
+            if (framebuffer != 0)
+            {
+                activeFramebuffer = framebuffers[framebuffer]
+                if (activeFramebuffer.texture)
+                {
+                    context.setRenderToTexture(activeFramebuffer.texture.texture)
+                }
+            }
+            else
+            {
+                context.setRenderToBackBuffer()
+            }
+        }
+
+        public function glFramebufferTexture2D(target:uint, attachment:uint, textarget:uint, texture:uint, level:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glFramebufferTexture2D " + target + " " + attachment + " " + textarget + " " + texture + " " + level + "\n")
+
+            activeFramebuffer.texture = textures[texture]
+        }
+
+        public function glCreateShader(type:uint):uint
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glCreateShader " + type + "\n")
+
+            var result:uint = shaderID
+
+            shaders[shaderID] = new ShaderInstance()
+            shaders[shaderID].id = shaderID
+            shaders[shaderID].type = type
+            shaderID++
+
+            return result
+        }
+
+        public function glShaderSource(shader:uint, json:String):void
+        {
+            if (log2) log2.send("Parsing \"" + json + "\"");
+
+            var obj:Object = JSON.parse(json);
+            var source:String = obj["agalasm"]
+
+            if (log2) log2.send( "[IMPLEMENTED] glShaderSource " + source + "\n")
+
+            var shaderInstance:ShaderInstance = shaders[shader]
+            shaderInstance.json = obj
+            if (shaderInstance.type == GL_VERTEX_SHADER)
+                agalAssembler.assemble(Context3DProgramType.VERTEX, source)
+            else
+                agalAssembler.assemble(Context3DProgramType.FRAGMENT, source)
+
+            shaderInstance.agalcode = agalAssembler.agalcode
+        }
+
+        public function glCompileShader(shader:uint):void
+        {
+            // We already compiled everything in glShaderSource()
+        }
+
+        public function glCreateProgram():uint
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glCreateProgram\n")
+
+            var result:uint = programID
+
+            programs[programID] = new ProgramInstance()
+            programs[programID].id = programID
+            programs[programID].program = context.createProgram()
+            programID++
+
+            return result
+        }
+
+        public function glAttachShader(program:uint, shader:uint):void
+        {
+            var programInstance:ProgramInstance = programs[program]
+            var shaderInstance:ShaderInstance = shaders[shader]
+
+            if (shaderInstance.type == GL_VERTEX_SHADER)
+                programInstance.vertexShader = shaderInstance
+            else
+                programInstance.fragmentShader = shaderInstance
+        }
+
+        public function glBindAttribLocation(program:uint, index:uint, name:String):void
+        {
+            var programInstance:ProgramInstance = programs[program]
+
+            var op:String = programInstance.vertexShader.json["varnames"][name]
+            if (op)
+            {
+                var opIndex:uint = uint(op.charAt(2))
+                programInstance.attribMap[index] = opIndex
+                if (log2) log2.send("glBindAttribLocation " + index + " : " + name + " -> " + op + " -> " + opIndex + "\n")
+            }
+            else
+            {
+                if (log2) log2.send("glBindAttribLocation " + index + " : " + name + " -> " + op + "\n")
+            }
+        }
+
+        public function getVertexBufferFormat(elementSize:uint):String
+        {
+            if (elementSize == 4 * 1) return Context3DVertexBufferFormat.FLOAT_1;
+            if (elementSize == 4 * 2) return Context3DVertexBufferFormat.FLOAT_2;
+            if (elementSize == 4 * 3) return Context3DVertexBufferFormat.FLOAT_3;
+            if (elementSize == 4 * 4) return Context3DVertexBufferFormat.FLOAT_4;
+
+            return "";
+        }
+
+        public function setVertexData(index:uint, format:uint, data:ByteArray, dataPtr:uint, size:uint, elementSize:uint):void {
+            var vertices:VertexBuffer3D = context.createVertexBuffer(size / elementSize, elementSize / 4)
+            vertices.uploadFromByteArray(data, dataPtr, 0, size / elementSize)
+
+            var agalIndex:uint = activeProgramInstance.attribMap[index]
+
+            if (activeProgramInstance)
+            {
+                if (log2) log2.send("setVertexData: Setting vertex data source #" + agalIndex + " to a buffer of " + size + " bytes with " + elementSize + " element size \n")
+
+                var vertexBufferFormat:String = getVertexBufferFormat(elementSize);
+
+                context.setVertexBufferAt(agalIndex, vertices, 0, vertexBufferFormat)
+            }
+            else
+            {
+                if (log2) log2.send("setVertexData: No active program is in place - the function is no-op\n")
+            }
+        }
+
+        public function setVertexBuffer(index:uint, buffer:uint, offset:uint, elementSize:uint):void
+        {
+            if (log2) log2.send("setVertexBuffer: index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");
+
+            // We can no resolve agalIndex for specified vertexAttribute without active program
+            if (!activeProgramInstance) {
+                return;
+            }
+
+            var bufferInstance:BufferInstance = buffers[buffer]
+            var agalIndex:uint = activeProgramInstance.attribMap[index]
+            var vertexBufferFormat:String = getVertexBufferFormat(elementSize);
+
+            // Offset is divided by 4 because Stage3D needs offset in 32-bit words
+            context.setVertexBufferAt(agalIndex, bufferInstance.vertexBuffer, offset / 4, vertexBufferFormat)
+        }
+
+        public function uploadVertexBuffer(buffer:uint, stride:uint):void
+        {
+            if (log2) log2.send("[IMPLEMENTED] uploadVertexBuffer buffer: " + buffer + "\n")
+
+            var bufferInstance:BufferInstance = buffers[buffer]
+            if (!bufferInstance.uploaded)
+            {
+                bufferInstance.stride = stride
+                var vertexCount:uint = bufferInstance.size / bufferInstance.stride
+
+                bufferInstance.stride = stride
+                bufferInstance.vertexBuffer = context.createVertexBuffer(vertexCount, bufferInstance.stride / 4)
+
+                // In Stage3D vertex buffer should fully uploaded at least once
+                var missingBytes:uint = vertexCount * bufferInstance.stride - bufferInstance.data.length
+                for (var i:uint = 0; i < missingBytes; i++) {
+                    bufferInstance.data.writeByte(0)
+                }
+
+                bufferInstance.vertexBuffer.uploadFromByteArray(bufferInstance.data, 0, 0, bufferInstance.data.length / bufferInstance.stride)
+                bufferInstance.data = null
+                bufferInstance.uploaded = true
+            }
+        }
+
+        public function clearVertexBuffer(index:uint):void
+        {
+            //var agalIndex:uint = activeProgramInstance.attribMap[index]
+            context.setVertexBufferAt(index, null)
+        }
+
+        private var _indexBuffer:IndexBuffer3D = null
+
+        public function setIndexBuffer(data:ByteArray, dataPtr:uint, indexCount:uint)
+        {
+            if (log2) log2.send("setIndexBuffer data: " + data.length + " dataPtr: " + dataPtr + " indexCount: " + indexCount + "\n")
+
+            var stubSize:uint = 5000
+            _indexBuffer = context.createIndexBuffer(stubSize)//indexCount)
+            var tmp:Vector.<uint> = new Vector.<uint>()
+            for (var i:uint = 0; i < stubSize; i++) {
+                tmp.push(0)
+            }
+            _indexBuffer.uploadFromVector(tmp, 0, stubSize)
+            _indexBuffer.uploadFromByteArray(data, dataPtr, 0, indexCount)
+        }
+
+        public function clearIndexBuffer()
+        {
+            _indexBuffer = null;
+        }
+
+        public function glDrawTriangles(vertexCount:uint, stripe:Boolean) {
+            if (activeElementArrayBuffer == null && _indexBuffer == null)
+            {
+                var indexValues:Vector.<uint> = null
+                var indexCount:uint = 0
+                var i:uint = 0
+
+                if (!stripe)
+                {
+                    indexCount = vertexCount
+                    _indexBuffer = context.createIndexBuffer(indexCount);
+                    indexValues = new Vector.<uint>()
+
+                    for(i = 0; i < vertexCount; i++) {
+                        indexValues.push(i)
+                    }
+                }
+                else
+                {
+                    if (log2) log2.send("Drawing stripe\n")
+
+                    indexCount = 3 * (vertexCount - 2)
+                    _indexBuffer = context.createIndexBuffer(indexCount)
+                    indexValues = new Vector.<uint>()
+
+                    for(i = 0; i < vertexCount - 2; i++) {
+                        indexValues.push(i + 0)
+                        indexValues.push(i + 1)
+                        indexValues.push(i + 2)
+                    }
+                }
+
+                if (log2) log2.send("glDrawTriangles: Drawing " + indexCount / 3 + " triangles\n")
+
+                _indexBuffer.uploadFromVector(indexValues, 0, indexCount)
+            }
+
+            if (log2) log2.send( "Going to draw " + (vertexCount / 3) + " triangles\n")
+            if (activeElementArrayBuffer != null) {
+                context.drawTriangles(activeElementArrayBuffer.indexBuffer, 0, vertexCount / 3)
+            } else {
+                context.drawTriangles(_indexBuffer, 0, vertexCount / 3)
+            }
+        }
+
+        public function glLinkProgram(program:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glLinkProgram from " + program + "\n")
+
+            var programInstance:ProgramInstance = programs[program]
+
+            programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
+        }
+
+        public function glGetUniformLocation(program:uint, name:String):uint
+        {
+            variableID++
+
+            if (log2) log2.send( "[IMPLEMENTED] glGetUniformLocation from " + program + " @ " + name + " (going to use " + variableID + ")\n")
+
+            var programInstance:ProgramInstance = programs[program]
+
+            var constantRegister:String = programInstance.vertexShader.json["varnames"][name];
+            if (constantRegister) {
+                if (log2) log2.send("glGetUniformLocation " + program + " : " + name + " found in Vertex Shader @ " + constantRegister + "\n")
+
+                variableHandles[variableID] = new VariableHandle()
+                variableHandles[variableID].id = variableID
+                variableHandles[variableID].shader = programInstance.vertexShader
+                variableHandles[variableID].number = uint(constantRegister.charAt(2))
+                variableHandles[variableID].name = constantRegister
+
+                return variableID;
+            }
+
+            constantRegister = programInstance.fragmentShader.json["varnames"][name];
+            if (constantRegister) {
+                if (log2) log2.send("glGetUniformLocation " + program + " : " + name + " found in Fragment Shader @ " + constantRegister + "\n")
+
+                variableHandles[variableID] = new VariableHandle()
+                variableHandles[variableID].id = variableID
+                variableHandles[variableID].shader = programInstance.fragmentShader
+                variableHandles[variableID].number = uint(constantRegister.charAt(2))
+                variableHandles[variableID].name = constantRegister
+
+                return variableID;
+            }
+
+            // var not found on vertex or fragment shader
+            return -1;
+        }
+
+        public function glUniform4f(handle:uint, v0:Number, v1:Number, v2:Number, v3:Number):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) " + handle + "\n")
+
+            var variableHandle = variableHandles[handle]
+
+            if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) resolved " + handle + " into " + variableHandle.name + " register\n")
+
+            if (variableHandle.name.substr(0, 2) == "fs")
+            {
+                var texture:TextureInstance = textureSamplers[ uint(v0) ]
+                if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to " + uint(v0) +
+                " which resolves into " + texture.texture + "\n")
+                context.setTextureAt(variableHandle.number, texture.texture)
+
+                return
+            }
+
+            var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
+            context.setProgramConstantsFromVector(shaderType, variableHandle.number, Vector.<Number>([v0, v1, v2, v3]))
+        }
+
+        public function glUniformMatrix4f(handle:uint, transpose:Boolean, v0:Number, v1:Number, v2:Number, v3:Number, v4:Number, v5:Number, v6:Number, v7:Number, v8:Number, v9:Number, v10:Number, v11:Number, v12:Number, v13:Number, v14:Number, v15:Number):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f " + handle + "\n")
+
+            var variableHandle = variableHandles[handle]
+            var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
+
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f setting float4x4 into " + variableHandle.number + " for " + shaderType + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f value = " + v0 + " " + v1 + " " + v2 + " " + v3 + "\n"
+                    + v4 + " " + v5 + " " + v6 + " " + v7 + "\n"
+                    + v8 + " " + v9 + " " + v10 + " " + v11 + "\n"
+                    + v12 + " " + v13 + " " + v14 + " " + v15 + "\n"
+                    + "\n")
+
+            context.setProgramConstantsFromMatrix(shaderType, variableHandle.number, new Matrix3D( new <Number>[
+                v0, v1, v2, v3,
+                v4, v5, v6, v7,
+                v8, v9, v10, v11,
+                v12, v13, v14, v15
+            ]), !transpose)
+        }
+
         public function glColorMask(red:Boolean, green:Boolean, blue:Boolean, alpha:Boolean):void
         {
-            if (log) log.send( "[IMPLEMENTED] glColorMask " + red + " " + green + " " + blue + " " + alpha + "\n")
-            context.setColorMask(red, green, blue, alpha)  
+            if (log2) log2.send( "[IMPLEMENTED] glColorMask " + red + " " + green + " " + blue + " " + alpha + "\n")
+            context.setColorMask(red, green, blue, alpha)
         }
-        
+
+        public function glUseProgram(program:uint):void
+        {
+            if (log2) log2.send( "[IMPLEMENTED] glUseProgram " + program + "\n")
+
+            var programInstance:ProgramInstance = programs[program]
+            context.setProgram(programInstance.program)
+
+            this.activeProgramInstance = programInstance;
+
+            var constantName:String
+            var consts:Object = programInstance.vertexShader.json["consts"];
+            for(constantName in consts) {
+                if (log2) log2.send( "[IMPLEMENTED] glUseProgram: Setting vertex const " + constantName + " for " + program + "\n")
+                context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, uint(constantName.charAt(2)), Vector.<Number>(consts[constantName]))
+            }
+
+            consts = programInstance.fragmentShader.json["consts"];
+            for(constantName in consts) {
+                if (log2) log2.send( "[IMPLEMENTED] glUseProgram: Setting fragment const " + constantName + " for " + program + "\n")
+                context.setProgramConstantsFromVector(Context3DProgramType.FRAGMENT, uint(constantName.charAt(2)), Vector.<Number>(consts[constantName]))
+            }
+
+            context.setTextureAt(1, null)
+            context.setTextureAt(2, null)
+        }
+
         private function stencilOpToContext3DStencilAction(op:uint):String
         {
             switch (op)
@@ -2482,29 +2988,29 @@ package GLS3D
                     return null
             }
         }
-        
+
         private function commitStencilState():void
         {
             if (contextEnableStencil)
             {
                 var triangleFace:String = contextEnableCulling ? glCullModeToContext3DTriangleFace(glCullMode, !frontFaceClockWise) : Context3DTriangleFace.FRONT_AND_BACK
-                context.setStencilActions(triangleFace, 
-                    contextStencilCompareMode, 
-                    contextStencilActionPass, 
-                    contextStencilActionDepthFail, 
+                context.setStencilActions(triangleFace,
+                    contextStencilCompareMode,
+                    contextStencilActionPass,
+                    contextStencilActionDepthFail,
                     contextStencilActionStencilFail)
             }
             else
             {
                 // Reset to default
-                context.setStencilActions(Context3DTriangleFace.FRONT_AND_BACK, 
-                    Context3DCompareMode.ALWAYS, 
-                    Context3DStencilAction.KEEP, 
-                    Context3DStencilAction.KEEP, 
+                context.setStencilActions(Context3DTriangleFace.FRONT_AND_BACK,
+                    Context3DCompareMode.ALWAYS,
+                    Context3DStencilAction.KEEP,
+                    Context3DStencilAction.KEEP,
                     Context3DStencilAction.KEEP)
             }
         }
-        
+
         public function glStencilOp(fail:uint, zfail:uint, zpass:uint):void
         {
             if (log) log.send("glStencilOp")
@@ -2513,7 +3019,7 @@ package GLS3D
             contextStencilActionPass = stencilOpToContext3DStencilAction(zpass)
             commitStencilState()
         }
-        
+
         //extern void glStencilFunc (GLenum func, GLint ref, GLuint mask):void
         public function glStencilFunc(func:uint, ref:int, mask:uint):void
         {
@@ -2531,27 +3037,27 @@ package GLS3D
                 context.setScissorRectangle(scissorRect)
         }
 
-        public function glViewport(x:int, y:int, width:int, height:int):void
+        public function glViewport(x:uint, y:uint, width:uint, height:uint):void
         {
-            // Not natively supported on this platform. Emulate with a scissor and VS scale/bias.
-            context.configureBackBuffer(width, height, 4);
+            if (log2) log2.send("[IMPLEMENTED] glViewport invoked with " + x + ", " + y + ", " + width + ", " + height + "\n")
+            context.configureBackBuffer(width, height, 0, false)
         }
 
         public function glDepthRangef(near:Number, far:Number):void
         {
-            // if (log) log.send( "[STUBBED] glDepthRangef " + near + " " + far + "\n")         
+            // if (log) log.send( "[STUBBED] glDepthRangef " + near + " " + far + "\n")
         }
 
         public function glClearDepth(depth:Number):void
         {
-            // if (log) log.send( "[IMPLEMENTED] glClearDepthf " + depth + "\n")   
-            contextClearDepth = depth          
+            // if (log) log.send( "[IMPLEMENTED] glClearDepthf " + depth + "\n")
+            contextClearDepth = depth
         }
 
         public function glClearStencil(s:int):void
         {
             // if (log) log.send( "[IMPLEMENTED] glClearStencil " + s + "\n")
-            contextClearStencil = s                
+            contextClearStencil = s
         }
 
         private function translateBlendFactor( openGLBlendFactor:uint ): String
@@ -2598,14 +3104,14 @@ package GLS3D
             }
             return Context3DBlendFactor.ONE
         }
-        
+
         public function glBlendFunc(sourceFactor:uint, destinationFactor:uint):void
         {
             contextSrcBlendFunc = translateBlendFactor(sourceFactor)
             contextDstBlendFunc = translateBlendFactor(destinationFactor)
 
             if (log) log.send("glBlendFunc " + contextSrcBlendFunc + ", " + contextDstBlendFunc)
-            
+
             if (contextEnableBlending && !disableBlending)
                 context.setBlendFactors(contextSrcBlendFunc, contextDstBlendFunc)
         }
@@ -2615,13 +3121,13 @@ package GLS3D
             contextSrcBlendFunc = translateBlendFactor( srcRGB )
             contextDstBlendFunc = translateBlendFactor( dstRGB )
 
-            if(srcRGB == GL_ONE && dstRGB == GL_ONE && srcAlpha == GL_ZERO && dstAlpha == GL_ONE) 
+            if(srcRGB == GL_ONE && dstRGB == GL_ONE && srcAlpha == GL_ZERO && dstAlpha == GL_ONE)
             {
             }
-            else if(srcRGB == GL_SRC_ALPHA && dstRGB == GL_ONE && srcAlpha == GL_ZERO && dstAlpha == GL_ONE) 
+            else if(srcRGB == GL_SRC_ALPHA && dstRGB == GL_ONE && srcAlpha == GL_ZERO && dstAlpha == GL_ONE)
             {
             }
-            else if(srcRGB == GL_SRC_ALPHA && dstRGB == GL_ONE_MINUS_SRC_ALPHA && srcAlpha == GL_ZERO && dstAlpha == GL_ONE) 
+            else if(srcRGB == GL_SRC_ALPHA && dstRGB == GL_ONE_MINUS_SRC_ALPHA && srcAlpha == GL_ZERO && dstAlpha == GL_ONE)
             {
             }
             else if (srcRGB == GL_DST_COLOR && dstRGB == GL_ZERO && srcAlpha == GL_ZERO && dstAlpha == GL_ONE)
@@ -2634,13 +3140,13 @@ package GLS3D
             {
                 if (log) log.send("glBlendFuncSeparate missing blend func: srcRGB = " + srcRGB + ", drtRGB = " + dstRGB + ", srcA = " + srcAlpha + ", dstA = " + dstAlpha)
             }
-            
+
             if (contextEnableBlending && !disableBlending)
             {
                 context.setBlendFactors(contextSrcBlendFunc, contextDstBlendFunc)
             }
         }
-        
+
         // ======================================================================
         //  Functions
         // ----------------------------------------------------------------------
@@ -2657,9 +3163,9 @@ package GLS3D
             if (!instance.texture)
             {
                 //trace("Compressed is " + compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA)
-                instance.texture = 
+                instance.texture =
                     context.createTexture(width, height, compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA, dataOff == 0 ? true : false)
-                
+
                 textureSamplers[activeTextureUnit] = instance
             }
 
@@ -2668,7 +3174,7 @@ package GLS3D
             } else {
                 if (log) log.send( "[NOTE] glTexImage2D replacing mip...")
             }
-            
+
             // FIXME (egeorgie) - we need a boolean param instead?
             //if (dataOff != 0)
             {
@@ -2680,7 +3186,7 @@ package GLS3D
                 }
             }
         }
-        
+
         protected function createCubeTexture(width:int, target:uint, level:int, data:ByteArray, dataOff:uint, compressed:Boolean=false, compressedUpload:Boolean=false):void
         {
             var instance:TextureInstance = activeTexture
@@ -2688,20 +3194,20 @@ package GLS3D
             {
                 if (!instance.cubeTexture)
                 {
-                    instance.cubeTexture = 
+                    instance.cubeTexture =
                         context.createCubeTexture(width, compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA, false)
-                    
+
                     textureSamplers[activeTextureUnit] = instance
                 }
-                    
+
                 var side:int = target - GL_TEXTURE_CUBE_MAP_POSITIVE_X
-                
+
                 if (compressedUpload)
                     instance.cubeTexture.uploadCompressedTextureFromByteArray(data, dataOff)
                 else
                     instance.cubeTexture.uploadFromByteArray(data, dataOff, side, level)
             }
-            else 
+            else
                 if (log) log.send( "[NOTE] No previously bound texture for glCompressedTexImage2D (2D)")
         }
     }
@@ -2713,7 +3219,7 @@ import flash.display3D.textures.*;
 import flash.geom.*;
 import flash.utils.*;
 
-class BufferPool    
+class BufferPool
 {
     public var framestamp:uint = 0
     public var idx:uint = 0
@@ -2729,11 +3235,11 @@ class BufferPool
         if(idx >= buffers.length)
             buffers.push(new DataBuffer())
 
-        return buffers[idx++]            
+        return buffers[idx++]
     }
 }
 
-internal class DataBuffer 
+internal class DataBuffer
 {
     public var id:uint
     public var target:uint
@@ -2751,6 +3257,18 @@ internal class DataBuffer
         data = new ByteArray()
         data.endian = "littleEndian"
     }
+}
+
+class BufferInstance
+{
+    public var id:uint
+    public var data:ByteArray
+    public var size:uint
+    public var type:uint
+    public var stride:uint
+    public var vertexBuffer:VertexBuffer3D
+    public var indexBuffer:IndexBuffer3D
+    public var uploaded:Boolean
 }
 
 class TextureInstance
@@ -2839,7 +3357,7 @@ class VertexBufferAttribute
     public var isGeneric:Boolean = true
 }
 
-class ProgramInstance
+class _ProgramInstance
 {
     public var program:Program3D
     public var id:uint
@@ -2880,6 +3398,37 @@ class FixedFunctionProgramInstance
     public var key:String
 }
 
+class FramebufferInstance
+{
+    public var id:uint
+    public var texture:TextureInstance
+}
+
+class ShaderInstance
+{
+    public var id:uint
+    public var type:uint
+    public var agalcode:ByteArray
+    public var json:Object
+}
+
+class ProgramInstance
+{
+    public var id:uint
+    public var program:Program3D
+    public var vertexShader:ShaderInstance
+    public var fragmentShader:ShaderInstance
+    public var attribMap:Dictionary = new Dictionary()
+}
+
+class VariableHandle
+{
+    public var id:uint
+    public var shader:ShaderInstance
+    public var number:uint
+    public var name:String
+}
+
 class TraceLog
 {
     public function send(value:String):void
@@ -2903,7 +3452,7 @@ class VertexStream
 
 /**
  *  Represents consequtive context state changes as defined between calls of glNewList() and glEndList().
- *  A single CommandList can have multiple context state changes.  
+ *  A single CommandList can have multiple context state changes.
  */
 class ContextState
 {
@@ -2912,7 +3461,7 @@ class ContextState
 }
 
 /**
- *  Records of the OpenGL commands between calls of glNewList() and glEndList().  
+ *  Records of the OpenGL commands between calls of glNewList() and glEndList().
  */
 class CommandList
 {
@@ -2922,7 +3471,7 @@ class CommandList
 
     // Storage
     public var commands:Vector.<Object> = new Vector.<Object>()
-    
+
     public function ensureActiveState():ContextState
     {
         if (!activeState)
@@ -2933,7 +3482,7 @@ class CommandList
             {
                 activeState.textureSamplers[i] = -1 // Set to 'undefined'
             }
-            
+
             activeState.material = new Material() // don't initialize, so we know what has changed.
         }
         return activeState
@@ -2953,7 +3502,7 @@ class Light
     public var type:uint
 
     // FIXME (klin): No spotlight for now...neverball doesn't use it
-    
+
     public function Light(init:Boolean = false, isLight0:Boolean = false)
     {
         if (init)
@@ -2967,7 +3516,7 @@ class Light
             type = LIGHT_TYPE_POINT;
         }
     }
-    
+
     public function createClone():Light
     {
         var clone:Light = new Light(false)
@@ -3000,7 +3549,7 @@ class Material
             emission = new <Number>[0.0, 0.0, 0.0, 1.0]
         }
     }
-    
+
     public function createClone():Material
     {
         var clone:Material = new Material(false)
@@ -3040,7 +3589,7 @@ class VertexBufferPool
     private var head:int = -1
     private var prevFrame:int = -1 // index of MRU node previous frame
     private var prevPrevFrame:int = -1 // index of MRU node two frames ago
-    
+
     public function acquire(hash:uint, count:uint, data:ByteArray, dataPtr:uint):VertexBuffer3D
     {
 //        // Debug:
@@ -3111,7 +3660,7 @@ class VertexBufferPool
         for (var i:int = 0; i < count * 12 * 4; i++)
         {
             var v:uint = data.readUnsignedByte()
-            
+
             hash = hash ^ v
             hash = hash * prime
         }
@@ -3144,7 +3693,7 @@ class VertexBufferPool
 //        node.src.length = length
 //        node.src.position = 0
 //        data.readBytes(node.src, 0, length)
-//        trace("Allocating: passed on hash " + hash + ", computed hash " + calcHash(count, data, dataPtr) + ", computed on copy " + calcHash(count, node.src, 0)) 
+//        trace("Allocating: passed on hash " + hash + ", computed hash " + calcHash(count, data, dataPtr) + ", computed on copy " + calcHash(count, node.src, 0))
 
         node.buffer.uploadFromByteArray(data, dataPtr, 0, count)
         bufferToIndex[node.buffer] = index
@@ -3152,7 +3701,7 @@ class VertexBufferPool
         node.hash = hash
         return node.buffer
     }
-    
+
     private function reuseBufferNode(count:uint):int
     {
         if (prevPrevFrame == -1)
@@ -3164,7 +3713,7 @@ class VertexBufferPool
         while (current != -1)
         {
             node = buffers[ current ]
-            
+
             // Make sure we don't reuse a buffer that's been used this or last frame
             if (node.next == prevPrevFrame)
                 return -1
@@ -3177,7 +3726,7 @@ class VertexBufferPool
         }
         return -1
     }
-    
+
     private function insertNode(node:BufferNode):int
     {
         var index:int = buffers.length
@@ -3196,20 +3745,20 @@ class VertexBufferPool
         head = index
         return index
     }
-    
+
     public function markInUse(buffer:VertexBuffer3D):void
     {
         if (!(buffer in bufferToIndex))
             return
-        
+
         var index:int = bufferToIndex[buffer]
-        
+
         // Already at the head?
         if (head == index)
             return
 
         var node:BufferNode = buffers[index]
-        
+
         // Make sure we adjust the pointers for MRU last Frame and the frame before
         if (prevPrevFrame == index)
             prevPrevFrame = node.next
@@ -3223,7 +3772,7 @@ class VertexBufferPool
             prevNode.next = node.next
         if (nextNode)
             nextNode.prev = node.prev
-        
+
         // Update the tail
         if (tail == index)
             tail = node.prev
@@ -3237,17 +3786,17 @@ class VertexBufferPool
         node.prev = -1
         head = index
     }
-    
+
     public function nextFrame():void
     {
-        prevPrevFrame = prevFrame    
+        prevPrevFrame = prevFrame
         prevFrame = head
-        
+
         // FIXME (egeorgie): cleanup for nodes at the tail if we're exceeding limit?
 
         //trace(print)
     }
-    
+
     // For debugging:
     private function get print():String
     {
