@@ -1139,21 +1139,52 @@ package GLS3D
 
         private function getFixedFunctionPipelineKey(flags:uint):String
         {
+            // glStateFlags
+            // textureSamplers's params
+            // textureSamplers's mipLevels
+
             var key:String = flags.toString() + glStateFlags.toString();
+            var instance:TextureInstance;
+            var textureParams:TextureParams;
+//            const zero:String = '0';
+//            const one:String = '1';
+            const ti:String = 'ti';
+            const sep:String = ',';
+//            const noop:String = '0,0,0,';
 
             if (0 != (flags & VertexBufferBuilder.HAS_TEXTURE2D))
             {
-                for(var i:int=0; i<8; i++)
+                for(var i:int=0; i<8; ++i)
                 {
-                    key = key.concat("ti", i,",")
-                     var ti:TextureInstance = textureSamplers[i]
-                     if (ti) {
-                         var textureParams:TextureParams = ti.params
-                        key = key.concat((textureParams ? textureParams.GL_TEXTURE_WRAP_S : 0), ",",
-                                        (textureParams ? textureParams.GL_TEXTURE_WRAP_T : 0), ",",
-                                        (textureParams ? textureParams.GL_TEXTURE_MIN_FILTER : 0), ",",
-                                        (ti.mipLevels > 1 ? 1 : 0))
+                    key += ti;
+                    key += i;
+                    key += sep;
+                    instance = textureSamplers[i]
+                    if (instance) {
+                        key += instance.key;
+//                         textureParams = instance.params
+//                         if (!textureParams) {
+//                            key += noop;
+//                         } else {
+//                            key += textureParams.GL_TEXTURE_WRAP_S;
+//                            key += sep;
+//                            key += textureParams.GL_TEXTURE_WRAP_T;
+//                            key += sep;
+//                            key += textureParams.GL_TEXTURE_MIN_FILTER;
+//                            key += sep;
+//                         }
+//                         key += (instance.mipLevels > 1 ? one : zero)
                     }
+                    // key = key.concat("ti", i,",")
+                     // var ti:TextureInstance = textureSamplers[i]
+
+                     // if (ti) {
+//                        var textureParams:TextureParams = ti.params
+                        // key = key.concat((textureParams ? textureParams.GL_TEXTURE_WRAP_S : 0), ",",
+                        //                (textureParams ? textureParams.GL_TEXTURE_WRAP_T : 0), ",",
+                        //                (textureParams ? textureParams.GL_TEXTURE_MIN_FILTER : 0), ",",
+                        //                (ti.mipLevels > 1 ? 1 : 0))
+                    //}
                 }
                 
             }
@@ -1163,6 +1194,7 @@ package GLS3D
         private function ensureProgramUpToDate(stream:VertexStream):void
         {
             var flags:uint = stream.vertexFlags
+            send("stream.vertexFlags is: " + flags)
             var key:String = getFixedFunctionPipelineKey(flags)
             if (log) log.send("program key is:" + key)
             
@@ -1174,6 +1206,7 @@ package GLS3D
         {
             var p:FixedFunctionProgramInstance = fixed_function_programs[ key ]
             
+
             if (!p)
             {
                 p = new FixedFunctionProgramInstance()
@@ -1726,7 +1759,6 @@ package GLS3D
             // For the debug console
             _stage = stage
 
-            //this.log = new TraceLog()
             this.context = context
 
             // id zero is null
@@ -2502,6 +2534,7 @@ package GLS3D
         public function glViewport(x:int, y:int, width:int, height:int):void
         {
             // Not natively supported on this platform. Emulate with a scissor and VS scale/bias.
+            context.configureBackBuffer(width, height, 4);
         }
 
         public function glDepthRangef(near:Number, far:Number):void
@@ -2722,12 +2755,63 @@ internal class DataBuffer
 
 class TextureInstance
 {
-    public var texture:Texture
-    public var cubeTexture:CubeTexture
-    public var mipLevels:uint
-    public var params:TextureParams = new TextureParams()
+    private var _dirty:Boolean;
+
+    private var _texture:Texture
+    public function get texture():Texture { return _texture; }
+    public function set texture(value:Texture):void {
+        if (_texture == value) return;
+        _texture = value;
+        _dirty = true;
+    }
+
+    private var _cubeTexture:CubeTexture
+    public function get cubeTexture():CubeTexture { return _cubeTexture; }
+    public function set cubeTexture(value:CubeTexture):void {
+        if (_cubeTexture == value) return;
+        _cubeTexture = value;
+        _dirty = true;
+    }
+
+    private var _mipLevels:uint
+    public function get mipLevels():uint { return _mipLevels; }
+    public function set mipLevels(value:uint):void {
+        if (_mipLevels == value) return;
+        _mipLevels = value;
+        _dirty = true;
+    }
+
+    private var _params:TextureParams = new TextureParams()
+    public function get params():TextureParams { return _params; }
+    public function set params(value:TextureParams):void {
+        if (value == _params) return;
+        _params = value;
+        _dirty = true;
+    }
+
     public var boundType:uint
     public var texID:uint
+
+    private var _cacheKey:String;
+    public function get key():String {
+        if (!_cacheKey || _dirty) {
+            _cacheKey = '';
+            if (!_params)
+                _cacheKey += '0,0,0,';
+            else {
+                _cacheKey += _params.GL_TEXTURE_WRAP_S;
+                _cacheKey += ',';
+                _cacheKey += _params.GL_TEXTURE_WRAP_T;
+                _cacheKey += ',';
+                _cacheKey += _params.GL_TEXTURE_MIN_FILTER;
+                _cacheKey += ',';
+            }
+            _cacheKey += (_mipLevels > 1 ? '1' : '0');
+        }
+        _dirty = false;
+        return _cacheKey;
+    }
+
 }
 
 class TextureParams
@@ -2740,6 +2824,7 @@ class TextureParams
     public var GL_TEXTURE_WRAP_S:uint = GLAPI.GL_REPEAT
     public var GL_TEXTURE_WRAP_T:uint = GLAPI.GL_REPEAT
     public var GL_TEXTURE_ENV_MODE:uint = GLAPI.GL_MODULATE
+
 }
 
 class VertexBufferAttribute
@@ -2964,46 +3049,53 @@ class VertexBufferPool
 //            trace("Hashes don't match: " + hash + " " + h)
 //        else
 //            trace("Hashes match: " + hash)
-        
-        if (!(hash in hashToIndex))
-            return null
-        
-        var index:int = hashToIndex[hash]
-        var node:BufferNode = buffers[index]
-        if (node.count != count)
-            throw("Collision in count " + node.count + " != " + count)
 
-//        // Debug:
-//        var src:ByteArray = node.src
-//        src.position = 0
-//        data.position = dataPtr
-//        for (var i:int = 0; i < src.length / 4; i++)
-//            if (src.readUnsignedInt() != data.readUnsignedInt())
-//            {
-//                trace("Collision in data at vertex " + (i / 12) + ", offset " + (i % 12))
-//                // print out the source & dst data
-//                {
-//                    src.position = 0
-//                    data.position = dataPtr
-//                    for (i = 0; i < src.length / 4; i++)
-//                    {
-//                        var value:Number = src.readFloat()
-//                        var value1:Number = data.readFloat()
-//                        if (value != value1)
-//                            trace("Difference: at position " + i + ": " + value + " != " + value1) 
-//                    }
-//                    
-//                    // Calculate improved hash function:
-//                    src.position = 0
-//                    data.position = dataPtr
-//                    var hash1:uint = calcHash(count, src, 0)
-//                    var hash2:uint = calcHash(count, data, dataPtr)
-//                    trace("Computed Hashes are " + hash1 + " (stored data), " + hash2 + " (new data), stored hash is " + node.hash)
-//                    return node.buffer
-//                }
-//            }
+//        if (!(hash in hashToIndex))
+//            return null
 
-        return node.buffer  
+        var index:int = hashToIndex[hash] as int;
+
+        if (index || (index == 0 && hash in hashToIndex))
+        {
+
+            //        var index:int = hashToIndex[hash]
+            var node:BufferNode = buffers[index]
+            if (node.count != count)
+                throw("Collision in count " + node.count + " != " + count)
+
+            //        // Debug:
+            //        var src:ByteArray = node.src
+            //        src.position = 0
+            //        data.position = dataPtr
+            //        for (var i:int = 0; i < src.length / 4; i++)
+            //            if (src.readUnsignedInt() != data.readUnsignedInt())
+            //            {
+            //                trace("Collision in data at vertex " + (i / 12) + ", offset " + (i % 12))
+            //                // print out the source & dst data
+            //                {
+            //                    src.position = 0
+            //                    data.position = dataPtr
+            //                    for (i = 0; i < src.length / 4; i++)
+            //                    {
+            //                        var value:Number = src.readFloat()
+            //                        var value1:Number = data.readFloat()
+            //                        if (value != value1)
+            //                            trace("Difference: at position " + i + ": " + value + " != " + value1)
+            //                    }
+            //
+            //                    // Calculate improved hash function:
+            //                    src.position = 0
+            //                    data.position = dataPtr
+            //                    var hash1:uint = calcHash(count, src, 0)
+            //                    var hash2:uint = calcHash(count, data, dataPtr)
+            //                    trace("Computed Hashes are " + hash1 + " (stored data), " + hash2 + " (new data), stored hash is " + node.hash)
+            //                    return node.buffer
+            //                }
+            //            }
+
+            return node.buffer
+        }
+        return null;
     }
 
     // Debug:
