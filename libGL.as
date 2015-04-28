@@ -2461,7 +2461,14 @@ package GLS3D
                         g = src.readByte()
                         b = src.readByte()
                     break
-
+                    case GL_LUMINANCE:
+                        // if (log) log.send("[Debug] <GL_LUMINANCE> width: " + width + ", height: " + height + ", pixel-len: " + src.bytesAvailable);
+                        a = src.readByte();
+                        r = a;
+                        g = a;
+                        b = a;
+                        // if (log) log.send("[Debug] <GL_LUMINANCE> alpha: " + a);
+                    break
                     default:
                         if (log) log.send("[Warning] Unsupported texture format: " + PIXEL_FORMAT[srcFormat - GL_COLOR_INDEX])
                         return dst
@@ -2506,8 +2513,8 @@ package GLS3D
             if (intFormat == GL_LUMINANCE)
             {
                 // Unsupported. TODO - Squelch all PF_G8 textures.
-                width = width/2
-                height = height/2
+                // width = width/2
+                // height = height/2
             }
 
             if (width == 0 || height == 0)
@@ -3040,7 +3047,8 @@ package GLS3D
         public function glViewport(x:uint, y:uint, width:uint, height:uint):void
         {
             if (log2) log2.send("[IMPLEMENTED] glViewport invoked with " + x + ", " + y + ", " + width + ", " + height + "\n")
-            context.configureBackBuffer(width, height, 0, false)
+            // context.configureBackBuffer(width, height, 0, false)
+            context.configureBackBuffer(width, height, 4)
         }
 
         public function glDepthRangef(near:Number, far:Number):void

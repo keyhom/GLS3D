@@ -645,7 +645,7 @@ extern void glGenTextures (GLsizei n, GLuint *textures)
     AS3_GetScalarFromVar(firstIndex, result);
 
 
-    fprintf(stderr, "[IMPLEMENTED] glGenTextures: asked to generate %d textures, generated with id = %d ++", n, firstIndex);
+    fprintf(stderr, "[IMPLEMENTED] glGenTextures: asked to generate %d textures, generated with id = %d ++\n", n, firstIndex);
 
     for (i = 0; i < n; i++) {
         textures[i] = firstIndex + i;
@@ -1235,7 +1235,7 @@ extern void glAlphaFunc (GLenum func, GLclampf ref)
 #include <stdio.h>
 #include <GL/gl.h>
 
-static int stubMsg = 1;
+static int stubMsg = 0;
 static GLuint activeArrayBuffer = 0;
 static GLuint activeElementArrayBuffer = 0;
 

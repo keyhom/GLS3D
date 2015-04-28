@@ -353,6 +353,8 @@ private static const PIXEL_FORMAT:Array = [
 "GL_ALPHA",
 "GL_RGB",
 "GL_RGBA",
+"GL_LUMINANCE",
+"GL_LUMINANCE_ALPHA",
 ]
 
 
