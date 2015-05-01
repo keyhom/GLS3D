@@ -125,12 +125,15 @@ private:
     float tx;
     float ty;
 
+    float lineWidth;
+
 public:
 
     VertexBufferBuilder() {
         pBuffer = null;
         totalBufferSize = 0;
         count = 0;
+        lineWidth = 0.0f;
 
         // Initialize
         x = 0.0f;
@@ -181,10 +184,7 @@ public:
     }
 
     void glVertex(float x, float y, float z) {
-        // Grow buffer if we need to
-        if (count * 12 == totalBufferSize) {
-            realloc((count + 1024) * 12);
-        }
+        ensureBuffer();
 
         pBuffer[count * 12 + 0]  = x;
         pBuffer[count * 12 + 1]  = y;
@@ -203,7 +203,11 @@ public:
         pBuffer[count * 12 + 11] = ty;
 
         ++count;
+
+        if (mode == GL_LINES && count % 2 == 0) {
+            generateLine();
         }
+    }
 
     void glEnd() {
         hashSum = offset_basis;
@@ -217,11 +221,22 @@ public:
                    "GLAPI.instance.glEndVertexData(%0, %1, ram, %2, %3, %4);\n" :: "r"(count), "r"(mode), "r"(pBuffer), "r"(hashSum), "r"(flags));
     }
 
+    void glLineWidth(float width) {
+        this->lineWidth = width;
+    }
+
 private:
 
     float *pBuffer;
     int totalBufferSize;
     int count;
+
+    void ensureBuffer(int offset = 0) {
+        // Grow buffer if we need to
+        if ((count + offset) * 12 >= totalBufferSize) {
+            realloc((count + offset + 1024) * 12);
+        }
+    }
 
     void realloc(int newSize) {
         float* newBuf = (float *)malloc(newSize * sizeof(float));
@@ -234,6 +249,43 @@ private:
         pBuffer = newBuf;
         totalBufferSize = newSize;
     }
+
+    void generateLine() {
+        if (mode == GL_LINES && count % 2 == 0) {
+            ensureBuffer(2);
+
+            float *p1 = &pBuffer[(count - 2) * 12];
+            float *p2 = &pBuffer[(count - 1) * 12];
+            float *p3 = &pBuffer[(count - 0) * 12];
+            float *p4 = &pBuffer[(count + 1) * 12];
+            float halfWidth = 0.5f * lineWidth;
+
+            float toX = *p2 - *p1;
+            float toY = *(p2 + 1) - *(p1 + 1);
+            float rotation = atan2(toY, toX);
+
+            float xValue = sin(rotation);
+            float yValue = cos(rotation);
+
+            memcpy(p3, p2, 12);
+            memcpy(p4, p1, 12);
+
+            *p1 = *p1 + xValue * halfWidth;
+            *(p1 + 1) = *(p1 + 1) - yValue * halfWidth;
+
+            *p2 = *p2 + xValue * halfWidth;
+            *(p2 + 1) = *(p2 + 1) - yValue * halfWidth;
+
+            *p3 = *p3 - xValue * halfWidth;
+            *(p3 + 1) = *(p3 + 1) + yValue * halfWidth;
+
+            *p4 = *p4 - xValue * halfWidth;
+            *(p4 + 1) = *(p4 + 1) + yValue * halfWidth;
+
+            count += 2;
+        }
+    }
+
 };
 
 
@@ -381,7 +433,7 @@ extern void glColor4ub (GLubyte red, GLubyte green, GLubyte blue, GLubyte alpha)
 /* ===================== From MESA ============================== */
 static void
 frustum(GLdouble left, GLdouble right,
-        GLdouble bottom, GLdouble top, 
+        GLdouble bottom, GLdouble top,
         GLdouble nearval, GLdouble farval)
 {
    GLdouble x, y, a, b, c, d;
@@ -1186,9 +1238,9 @@ extern void glLightfv (GLenum light, GLenum pname, const GLfloat *params)
 {
     float fr, fg, fb, fa;
 
-    if (pname == GL_SPOT_EXPONENT || 
+    if (pname == GL_SPOT_EXPONENT ||
 		pname == GL_SPOT_CUTOFF ||
-        pname == GL_CONSTANT_ATTENUATION || 
+        pname == GL_CONSTANT_ATTENUATION ||
 		pname == GL_LINEAR_ATTENUATION ||
         pname == GL_QUADRATIC_ATTENUATION) {
         fr = (float)params[0];
@@ -1235,7 +1287,7 @@ extern void glAlphaFunc (GLenum func, GLclampf ref)
 #include <stdio.h>
 #include <GL/gl.h>
 
-static int stubMsg = 0;
+static int stubMsg = 1;
 static GLuint activeArrayBuffer = 0;
 static GLuint activeElementArrayBuffer = 0;
 
@@ -1304,9 +1356,17 @@ extern void glClearIndex (GLfloat c)
 
 extern void glColor3b (GLbyte red, GLbyte green, GLbyte blue)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3b...\n");
-    }
+    // if(stubMsg) {
+        // fprintf(stderr, "stubbed glColor3b...\n");
+    // }
+    float fr = float(red / 255);
+    float fg = float(green / 255);
+    float fb = float(blue / 255);
+    float fa = (float)1.0f;
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3bv (const GLbyte *v)
@@ -2218,9 +2278,9 @@ extern void glLightModeliv (GLenum pname, const GLint *params)
 
 extern void glLightf (GLenum light, GLenum pname, GLfloat param)
 {
-    if (pname == GL_SPOT_EXPONENT || 
+    if (pname == GL_SPOT_EXPONENT ||
 		pname == GL_SPOT_CUTOFF ||
-        pname == GL_CONSTANT_ATTENUATION || 
+        pname == GL_CONSTANT_ATTENUATION ||
 		pname == GL_LINEAR_ATTENUATION ||
         pname == GL_QUADRATIC_ATTENUATION) {
 		glLightfv(light, pname, &param);
@@ -2252,9 +2312,11 @@ extern void glLineStipple (GLint factor, GLushort pattern)
 
 extern void glLineWidth (GLfloat width)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glLineWidth...\n");
-    }
+    // if(stubMsg) {
+        // fprintf(stderr, "stubbed glLineWidth...\n");
+    // }
+    vbb.glLineWidth(width);
+    // inline_as3("import GLS3D.GLAPI; GLAPI.instance.glLineWidth(%0);" : : "r"(width));
 }
 
 extern void glListBase (GLuint base)
@@ -3116,23 +3178,26 @@ extern void glTexSubImage3D (GLenum target, GLint level, GLint xoffset, GLint yo
 
 extern void glVertex2d (GLdouble x, GLdouble y)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertex2d...\n");
-    }
+    float fx = (float)x;
+    float fy = (float)y;
+    float fz = (float)0.0f;
+    vbb.glVertex(fx, fy, fz);
 }
 
 extern void glVertex2dv (const GLdouble *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertex2dv...\n");
-    }
+    float fx = (float)v[0];
+    float fy = (float)v[1];
+    float fz = (float)0.0f;
+    vbb.glVertex(fx, fy, fz);
 }
 
 extern void glVertex2fv (const GLfloat *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertex2fv...\n");
-    }
+    float fx = (float)v[0];
+    float fy = (float)v[1];
+    float fz = (float)0.0f;
+    vbb.glVertex(fx, fy, fz);
 }
 
 extern void glVertex2iv (const GLint *v)
@@ -4311,12 +4376,12 @@ extern void glDrawArrays(GLenum mode, GLint first, GLsizei count)
     if (mode != GL_TRIANGLES && mode != GL_TRIANGLE_STRIP)
     {
         fprintf(stderr, "Problem officer: We don't support anything but triangles, but you gave us shit = %d\n", mode);
-        return; 
+        return;
     }
 
     for (int index = 0; index < 8; index++) {
         inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.clearVertexBuffer(%0);\n" :: "r"(index));        
+               "GLAPI.instance.clearVertexBuffer(%0);\n" :: "r"(index));
     }
 
     for(int index = 0; index < 8; index++) {
@@ -4338,12 +4403,12 @@ extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoi
     if (mode != GL_TRIANGLES)
     {
         fprintf(stderr, "Problem officer: We don't support anything but triangles, but you gave us shit = %d\n", mode);
-        return; 
+        return;
     }
 
     for (int index = 0; index < 8; index++) {
         inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.clearVertexBuffer(%0);\n" :: "r"(index));        
+               "GLAPI.instance.clearVertexBuffer(%0);\n" :: "r"(index));
     }
 
     for(int index = 0; index < 8; index++) {
@@ -4408,7 +4473,7 @@ extern GLuint glCreateShader (GLenum type)
     AS3_GetScalarFromVar(id, result);
     return id;
 }
-    
+
 extern void glDeleteShader (GLuint shader)
 {
     if(stubMsg) {
@@ -4683,14 +4748,14 @@ extern void glGetShaderSource (GLuint shader, GLsizei bufSize, GLsizei *length, 
         fprintf(stderr, "stubbed glGetShaderSource...\n");
     }
 }
-    
+
 extern int glGetAttribLocation (GLuint program, const GLchar* name)
 {
     if(stubMsg) {
         fprintf(stderr, "stubbed glGetAttribLocation...\n");
     }
 }
-    
+
 extern void glBindAttribLocation (GLuint program, GLuint index, const GLchar *name)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
@@ -4851,7 +4916,7 @@ extern void glGenerateMipmap (GLenum target)
     }
 }
 
-}// End of extern "C" 
+}// End of extern "C"
 
 //**************************************************************************************
 // Name: glDraw_XXX
@@ -4882,14 +4947,14 @@ struct DrawContext
 	int			tex0Stride;
 	int			normalStride;
 	int			vertsStride;
-	
+
 	void	SetDrawContext	(const ArrayEXTState& states)
 	{
 		pColor	= &states.colors;
 		pTex0	= &states.texcoords[activeTextureUnit - GL_TEXTURE0];
 		pNormal	= &states.normals;
 		pVerts	= &states.verts;
-	
+
 		colorStride = max(pColor->stride, pColor->size);
 		tex0Stride	= max(pTex0->stride,  pTex0->size*sizeof(GLfloat));
 		normalStride= max(pNormal->stride, pNormal->size*sizeof(GLfloat));
@@ -4941,7 +5006,7 @@ template <bool INDEXED>
 void _glDrawPrimitives(GLint first, GLsizei count, const GLvoid *indices, GLenum mode, GLenum type)
 {
 #if (GL_DRAW_PRIMITIVES_DO_PARAM_CHECK)
-	// glColor state check 
+	// glColor state check
 	if (AState.colors.enabled) {
 		// Supported type
 		bool glColorSupported  = (AState.colors.type == GL_UNSIGNED_BYTE);	// **NOTE: Can be expanded as we expand more types
@@ -4985,13 +5050,13 @@ void _glDrawPrimitives(GLint first, GLsizei count, const GLvoid *indices, GLenum
 			inline_as3("import GLS3D.GLAPI; GLAPI.instance.send('FAIL glDrawElements must have float verts');\n");
 			inline_as3("import GLS3D.GLAPI; GLAPI.instance.send('FAIL glDrawElements unknown vert num' + %0);\n" :  : "r"(AState.verts.size));
 		}
-	}	
+	}
 #endif	// GL_DRAW_ELEMENTS_DO_PARAM_CHECK
 
 	// We are going to convert everything to triangles
     glBegin(GL_TRIANGLES);
 
-    switch(mode) 
+    switch(mode)
 	{
     case GL_TRIANGLES:
 		CALL_GL_DRAW_PRIMITIVES(glDraw_Triangles, type, INDEXED, first, count, indices);
@@ -5007,15 +5072,15 @@ void _glDrawPrimitives(GLint first, GLsizei count, const GLvoid *indices, GLenum
         break;
     }
 
-    glEnd();	
+    glEnd();
 }
 
 // GL_TRIANGLES
 template < typename T, bool INDEXED >
 void glDraw_Triangles(GLint first, GLsizei count, const GLvoid* indices)
-{	
+{
 	glDrawContext.SetDrawContext(AState);
-	PrimIterator<T, INDEXED> iter(first, count, indices); 
+	PrimIterator<T, INDEXED> iter(first, count, indices);
 	while (iter.hasNext())
 	{
 		int idx = iter.getIndex();
@@ -5066,7 +5131,7 @@ void glDraw_TriStrips(GLint first, GLsizei count, const GLvoid* indices)
 		glDrawContext.glSetVertex(idx1);
 		glDrawContext.glSetVertex(idx3);
 		glDrawContext.glSetVertex(idx2);
-		
+
 		// Update cached verts
 		cachedIdx[0] = idx2;
 		cachedIdx[1] = idx3;

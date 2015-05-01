@@ -59,7 +59,7 @@ package GLS3D
 
         public var disableCulling:Boolean = false
         public var disableBlending:Boolean = false
-        public var log:Object = null; // new TraceLog();
+        public var log:Object = null; // new TraceLog()
         public var log2:Object = null; // new TraceLog();
         public var context:Context3D
         public var genOnBind:Boolean = false
@@ -923,6 +923,12 @@ package GLS3D
 
             switch (mode)
             {
+                case GL_LINES:
+                    if (log) log.send("generateDLIndexData with GL_LINES");
+                    /* for (i = 0; i < count; i += 1) { */
+                        /* indexData.push(i); */
+                    /* } */
+                    /* break; */
                 case GL_QUADS:
                     // Assert count == n * 4, n >= 1
                     // for each group of 4 vertices 0, 1, 2, 3 draw two triangles 0, 1, 2 and 0, 2, 3
@@ -1870,8 +1876,8 @@ package GLS3D
             // For the debug console
             _stage = stage
 
-            //this.log = new TraceLog()
-            //this.log2 = new TraceLog()
+            /* this.log = new TraceLog() */
+            /* this.log2 = new TraceLog() */
             this.context = context
 
             agalAssembler = new AGALMiniAssembler()
