@@ -38,8 +38,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdint.h>
 
-
-
 //=======================================================================
 //		CPP HELPER FUNCTIONS
 //=======================================================================
@@ -541,7 +539,6 @@ extern void gluLookAt( GLdouble eyex, GLdouble eyey, GLdouble eyez,
    glTranslated( -eyex, -eyey, -eyez );
 
 }
-
 
 /* ========================================================================= */
 
@@ -1129,7 +1126,7 @@ extern void glReadBuffer (GLenum mode)
 static const char *GL_VENDOR_str="Adobe";
 static const char *GL_RENDERER_str="Stage3D";
 static const char *GL_VERSION_str="2.1";
-static const char *GL_EXTENSIONS_str="GL_EXT_compiled_vertex_array";
+static const char *GL_EXTENSIONS_str="GL_EXT_compiled_vertex_array\n";
 static const char *GL_default_str="";
 
 

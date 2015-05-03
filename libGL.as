@@ -441,15 +441,15 @@ package GLS3D
                 case GL_MAX_TEXTURE_SIZE:
                     buf.position = offset
                     buf.writeInt(4096)
-                break
+                    break
                 case GL_VIEWPORT:
                     buf.position = offset+0; buf.writeInt(0); // x
                     buf.position = offset+4; buf.writeInt(0); // y
                     buf.position = offset+8; buf.writeInt(contextWidth); // width
                     buf.position = offset+12; buf.writeInt(contextHeight); // height
-                break
-
+                    break
                 default:
+                    buf.position = offset+0; buf.writeInt(0);
                     if (log) log.send("[NOTE] Unsupported glGetIntegerv call with 0x" + pname.toString(16))
             }
         }
@@ -1517,7 +1517,8 @@ package GLS3D
                         if(log) log.send("mipmapping levels " + ti.mipLevels)
 
                         if (ti.mipLevels > 1) {
-                            fragmentShader = fragmentShader.replace("minFilter", "linear, miplinear, -2.0")
+                            /* fragmentShader = fragmentShader.replace("minFilter", "linear, miplinear, -2.0") */
+                            fragmentShader = fragmentShader.replace("minFilter", "linear, miplinear")
                         } else if(textureParams.GL_TEXTURE_MIN_FILTER == GL_NEAREST) {
                             fragmentShader = fragmentShader.replace("minFilter", "nearest")
                         } else {
@@ -3196,7 +3197,16 @@ package GLS3D
                     instance.texture.uploadCompressedTextureFromByteArray(data, dataOff)
                 else
                 {
+                    /* if (log) log.send("[DEBUG] texture.uploadFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height); */
+                    /* if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]") */
                     instance.texture.uploadFromByteArray(data, dataOff, level)
+                    // XXX (jeremy) - upload the mininum mipmap
+                    if (level > 0 && width == 2 && height == 2) {
+                        var temp:ByteArray = new ByteArray;
+                        temp.writeInt(0);
+                        instance.mipLevels++;
+                        instance.texture.uploadFromByteArray(temp, 0, level + 1);
+                    }
                 }
             }
         }
