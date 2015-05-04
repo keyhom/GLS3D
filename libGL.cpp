@@ -1123,11 +1123,28 @@ extern void glReadBuffer (GLenum mode)
                "GLAPI.instance.send('glReadBuffer not yet implemented.');");
 }
 
+#define __CHARSTRING_JOIN(str, array, sizet, sep)\
+do {\
+    size_t i,len = 0; \
+    for (i = 0; i < sizet; ++i){ \
+        len += sprintf(str + len, "%s", array[i]); \
+        if(i < sizet - 1) \
+            len += sprintf(str + len, "%c", sep); \
+    }\
+} while (0)
+
 static const char *GL_VENDOR_str="Adobe";
 static const char *GL_RENDERER_str="Stage3D";
 static const char *GL_VERSION_str="2.1";
-static const char *GL_EXTENSIONS_str="GL_EXT_compiled_vertex_array\n";
+// static const char *GL_EXTENSIONS_str="GL_EXT_compiled_vertex_array";
+static const char *GL_EXTENSIONS_strs[] = {
+    "GL_ARB_multitexture",
+    "GL_EXT_compiled_vertex_array",
+    "GL_EXT_texture_env_combine",
+    ""
+};
 static const char *GL_default_str="";
+static char *GL_EXTENSIONS_cacheStr = NULL;
 
 
 extern const GLubyte * glGetString (GLenum name)
@@ -1140,7 +1157,20 @@ extern const GLubyte * glGetString (GLenum name)
     case GL_VERSION:
         return (const GLubyte*)GL_VERSION_str;
     case GL_EXTENSIONS:
-        return (const GLubyte*)GL_EXTENSIONS_str;
+        if (NULL == GL_EXTENSIONS_cacheStr) {
+            size_t count = sizeof(GL_EXTENSIONS_strs) / sizeof(void *);
+            size_t memreq = 0;
+            for (int i = 0; i < count; ++i) {
+                memreq += strlen(GL_EXTENSIONS_strs[i]) + 1;
+            }
+
+            if (memreq)
+                GL_EXTENSIONS_cacheStr = (char *) malloc(memreq + 1);
+
+            __CHARSTRING_JOIN(GL_EXTENSIONS_cacheStr, GL_EXTENSIONS_strs, count, ' ');
+        }
+        return (const GLubyte *)GL_EXTENSIONS_cacheStr;
+        // return (const GLubyte*)GL_EXTENSIONS_str;
     default:
         inline_as3("import GLS3D.GLAPI;\n"\
            "GLAPI.instance.send('glGetString not yet implemented. for ' + %0);" :  : "r"(name));

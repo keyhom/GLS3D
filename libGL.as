@@ -159,7 +159,8 @@ package GLS3D
         private var contextEnableCulling:Boolean
         private var contextEnableBlending:Boolean
         private var contextDepthFunc:String = Context3DCompareMode.ALWAYS
-        private var contextEnableTextures:Boolean = false
+        /* private var contextEnableTextures:Boolean = false */
+        private var contextEnableTextures:Vector.<Boolean> = new Vector.<Boolean>(8);
         private var contextEnableLighting:Boolean = false
         private var contextColorMaterial:Boolean = false
         private var contextSeparateSpecular:Boolean = false
@@ -169,7 +170,7 @@ package GLS3D
         private var activeCommandList:CommandList = null
         private var commandLists:Vector.<CommandList> = null
         private var vertexBufferAttributes:Vector.<VertexBufferAttribute> = new Vector.<VertexBufferAttribute>(8)
-        private var textureUnits:Array = new Array(32)
+        /* private var textureUnits:Array = new Array(32) */
         private var activeProgram:ProgramInstance
         private var activeTextureUnit:uint = 0
         private var textureSamplers:Vector.<TextureInstance> = new Vector.<TextureInstance>(8)
@@ -448,6 +449,10 @@ package GLS3D
                     buf.position = offset+8; buf.writeInt(contextWidth); // width
                     buf.position = offset+12; buf.writeInt(contextHeight); // height
                     break
+                case GL_MAX_TEXTURE_UNITS:
+                    buf.position = offset + 0;
+                    buf.writeInt(4);
+                    break;
                 default:
                     buf.position = offset+0; buf.writeInt(0);
                     if (log) log.send("[NOTE] Unsupported glGetIntegerv call with 0x" + pname.toString(16))
@@ -516,11 +521,11 @@ package GLS3D
 
             // Current active textures ??
             var ti:TextureInstance
-            var i:int
-            for (i = 0; i < 1; i++ )
-            {
+            var i:int = activeTextureUnit
+            /* for (i = 0; i < 1; i++ ) */
+            /* { */
                 ti = textureSamplers[i]
-                if (ti && contextEnableTextures) {
+                if (ti && contextEnableTextures[i]) {
                     context.setTextureAt(i, ti.boundType == GL_TEXTURE_2D ? ti.texture : ti.cubeTexture)
                     if(log) log.send("setTexture " + i + " -> " + ti.texID)
                 }
@@ -528,7 +533,7 @@ package GLS3D
                     context.setTextureAt(i, null)
                     if(log) log.send("setTexture " + i + " -> 0")
                 }
-            }
+            /* } */
 
             var textureStatInvalid:Boolean = false;
             const count:int = cl.commands.length
@@ -544,9 +549,10 @@ package GLS3D
                     // we must have a state change
 
                     // Execute state changes
-                    if (contextEnableTextures && stateChange.textureSamplers)
+                    /* if (contextEnableTextures && stateChange.textureSamplers) */
+                    if (stateChange.textureSamplers)
                     {
-                        for (i = 0; i < 1; i++ )
+                        for (i = 0; i < contextEnableTextures.length; i++ )
                         {
                             var texID:int = stateChange.textureSamplers[i]
                             if (texID != -1)
@@ -554,7 +560,8 @@ package GLS3D
                                 if (log) log.send("Mapping texture " + texID + " to sampler " + i)
                                 ti = (texID != 0) ? textures[texID] : null
                                 textureSamplers[i] = ti
-                                activeTexture = ti // Executing the glBind, so that after running through the list we have the side-effect correctly
+                                if (i == activeTextureUnit)
+                                    activeTexture = ti // Executing the glBind, so that after running through the list we have the side-effect correctly
                                 textureStatInvalid = true
                                 if (ti)
                                     context.setTextureAt(i, ti.boundType == GL_TEXTURE_2D ? ti.texture : ti.cubeTexture)
@@ -1331,7 +1338,7 @@ package GLS3D
                 fixed_function_programs[key] = p
 
                 p.program = context.createProgram()
-                p.hasTexture = contextEnableTextures &&
+                p.hasTexture = contextEnableTextures[activeTextureUnit] &&
                                ((0 != (flags & VertexBufferBuilder.HAS_TEXTURE2D)) ||
                                 (0 != (flags & VertexBufferBuilder.TEX_GEN_S_SPHERE) && 0 != (flags & VertexBufferBuilder.TEX_GEN_T_SPHERE)))
 
@@ -1340,7 +1347,8 @@ package GLS3D
                 if (p.hasTexture)
                 {
                     // FIXME (egeorgie): Assume sampler 0
-                    ti = textureSamplers[0]
+                    /* ti = textureSamplers[0] */
+                    ti = textureSamplers[activeTextureUnit]
                     if (ti)
                         textureParams = ti.params
                 }
@@ -1520,9 +1528,9 @@ package GLS3D
                             /* fragmentShader = fragmentShader.replace("minFilter", "linear, miplinear, -2.0") */
                             fragmentShader = fragmentShader.replace("minFilter", "linear, miplinear")
                         } else if(textureParams.GL_TEXTURE_MIN_FILTER == GL_NEAREST) {
-                            fragmentShader = fragmentShader.replace("minFilter", "nearest")
+                            fragmentShader = fragmentShader.replace("minFilter", "nearest, nomip")
                         } else {
-                            fragmentShader = fragmentShader.replace("minFilter", "linear")
+                            fragmentShader = fragmentShader.replace("minFilter", "linear, nomip")
                         }
                     }
                 }
@@ -1811,8 +1819,8 @@ package GLS3D
                 }
 
                 if(log) {
-                log.send("vshader:\n" + vertexShader)
-                log.send("fshader:\n" + fragmentShader)
+                    log.send("vshader:\n" + vertexShader)
+                    log.send("fshader:\n" + fragmentShader)
                 }
 
                 // FIXME (egeorgie): cache the agalcode?
@@ -1877,8 +1885,8 @@ package GLS3D
             // For the debug console
             _stage = stage
 
-            /* this.log = new TraceLog() */
-            /* this.log2 = new TraceLog() */
+            this.log = new TraceLog()
+            this.log2 = new TraceLog()
             this.context = context
 
             agalAssembler = new AGALMiniAssembler()
@@ -1912,7 +1920,8 @@ package GLS3D
 
             cubeVertexData = new Vector.<Number>();
             var si:int=36;
-            for (var i:int=0;i<si;i+=3)
+            var i:int;
+            for (i =0;i<si;i+=3)
             {
                 const v1:Array = vertices[indices[i]];
                 const v2:Array = vertices[indices[i+1]];
@@ -1962,9 +1971,9 @@ package GLS3D
             var unitIndex:uint = index - GL_TEXTURE0
             if(unitIndex <= 31) {
                 activeTextureUnit = unitIndex
-                // log.send( "[IMPLEMENTED] glActiveTexture " + activeTextureUnit + "\n")
+                if (log) log.send( "[IMPLEMENTED] glActiveTexture " + activeTextureUnit + "\n")
             } else {
-                // log.send( "[NOTE] Invalid texture unit requested " + uint)
+                if (log) log.send( "[NOTE] Invalid texture unit requested " + uint)
             }
         }
 
@@ -2129,7 +2138,8 @@ package GLS3D
                 break
 
                 case GL_TEXTURE_2D:
-                    contextEnableTextures = true
+                    /* contextEnableTextures = true */
+                    contextEnableTextures[activeTextureUnit] = true;
                     setGLState(ENABLE_TEXTURE_OFFSET)
                     break
 
@@ -2235,7 +2245,8 @@ package GLS3D
                     break
 
                case GL_TEXTURE_2D:
-                    contextEnableTextures = false
+                    contextEnableTextures[activeTextureUnit] = false;
+                    /* contextEnableTextures = false */
                     clearGLState(ENABLE_TEXTURE_OFFSET)
                     break
 
@@ -2509,10 +2520,10 @@ package GLS3D
 
         public function glTexImage2D(target:uint, level:int, intFormat:int, width:int, height:int, border:int, format:uint, imgType:uint, ptr:uint, ram:ByteArray):void
         {
-            if (width == 1 && height == 1) {
-                if (log2) log2.send("[IMPLEMENTED] glTexImage2D does not support 1x1 textures - No-Op");
-                return;
-            }
+            /* if (width == 1 && height == 1) { */
+                /* if (log2) log2.send("[IMPLEMENTED] glTexImage2D does not support 1x1 textures - No-Op"); */
+                /* return; */
+            /* } */
 
             if (log2) log2.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] + " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " +
                       PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " + imgType.toString(16) + "\n")
@@ -3200,13 +3211,6 @@ package GLS3D
                     /* if (log) log.send("[DEBUG] texture.uploadFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height); */
                     /* if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]") */
                     instance.texture.uploadFromByteArray(data, dataOff, level)
-                    // XXX (jeremy) - upload the mininum mipmap
-                    if (level > 0 && width == 2 && height == 2) {
-                        var temp:ByteArray = new ByteArray;
-                        temp.writeInt(0);
-                        instance.mipLevels++;
-                        instance.texture.uploadFromByteArray(temp, 0, level + 1);
-                    }
                 }
             }
         }

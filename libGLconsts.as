@@ -277,6 +277,7 @@ public static const GL_CLIP_PLANE5:uint = 0x3005
 
 public static const GL_MAX_TEXTURE_SIZE:uint =          0x0D33
 public static const GL_VIEWPORT:uint =                  0x0BA2
+public static const GL_MAX_TEXTURE_UNITS:uint =         0x84E2
 
 public static const COMPARE_MODE:Array = [
 "GL_NEVER",

@@ -54,12 +54,14 @@ compile: check
 	@echo "Compiling libGL.cpp"
 	@$(FLASCC)/usr/bin/g++ -fno-exceptions -O4 -c -Iinstall/usr/include/ libGL.cpp
 	@$(FLASCC)/usr/bin/ar crus install/usr/lib/libGL.a install/usr/lib/libGL.abc libGL.o
-	@echo "Compiling mipmap.cpp"
+	@echo "Compiling mipmap.c quad.c"
 	@$(FLASCC)/usr/bin/gcc -fno-exceptions -O4 -c -Iinstall/usr/include/ -Linstall/usr/lib mipmap.c
-	@$(FLASCC)/usr/bin/ar crus install/usr/lib/libGLU.a mipmap.o
+	@$(FLASCC)/usr/bin/gcc -fno-exceptions -O4 -c -Iinstall/usr/include/ -Linstall/usr/lib quad.c
+	@$(FLASCC)/usr/bin/ar crus install/usr/lib/libGLU.a mipmap.o quad.o
 
 	@rm -f libGL.o
 	@rm -f mipmap.o
+	@rm -f quad.o
 
 check:
 	@if [ -d $(FLASCC)/usr/bin ] ; then true ; \
