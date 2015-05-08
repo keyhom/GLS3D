@@ -722,8 +722,8 @@ struct ArrayEXTState {
 
 extern void glClientActiveTexture (GLenum texture)
 {
-    ///inline_as3("import GLS3D.GLAPI;\n"\
-    //         "GLAPI.instance.send('stubbed glClientActiveTexture '  +%0);\n" : : "r"(texture));
+    inline_as3("import GLS3D.GLAPI;\n"\
+            "GLAPI.instance.send('stubbed glClientActiveTexture '  +%0);\n" : : "r"(texture));
 }
 
 extern void glEnableClientState (GLenum array)
@@ -780,11 +780,12 @@ extern void glLockArraysEXT (GLint i, GLsizei j)
 
 static GLfloat* getFloatPtr(const void *ptr, int stride, int i)
 {
-    return (GLfloat*)&ptr[i*stride];
+    return (GLfloat*)ptr + (i * stride);
 }
 static GLubyte* getUBytePtr(const void *ptr, int stride, int i)
 {
-    return (GLubyte*)&ptr[i*stride];
+    // return (GLubyte*)&ptr[i*stride];
+    return (GLubyte*)ptr + (i * stride);
 }
 
 static int max(int a, int b)
@@ -1009,13 +1010,15 @@ extern void glScissor (GLint x, GLint y, GLsizei width, GLsizei height)
 extern void glDeleteLists (GLuint list, GLsizei range)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.send('glDeleteLists not yet implemented.');");
+               // "GLAPI.instance.send('glDeleteLists not yet implemented.');");
+        "GLAPI.instance.glDeleteLists(%0, %1);\n" : : "r"(list), "r"(range));
 }
 
 extern GLboolean glIsList (GLuint list)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
                "GLAPI.instance.send('glIsList not yet implemented.');");
+    return GL_FALSE;
 }
 
 extern void glDeleteTextures (GLsizei n, const GLuint *textures)
@@ -1029,6 +1032,7 @@ extern GLboolean glIsTexture (GLuint texture)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
                "GLAPI.instance.send('glIsTexture not yet implemented.');");
+    return GL_FALSE;
 }
 
 extern void glColor4f (GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
@@ -1065,10 +1069,11 @@ extern void glVertex3f (GLfloat x, GLfloat y, GLfloat z)
 
 extern void glVertex3d (GLdouble x, GLdouble y, GLdouble z)
 {
-    float fx = (float)x;
-    float fy = (float)y;
-    float fz = (float)z;
-    vbb.glVertex(fx, fy, fz);
+    // float fx = (float)x;
+    // float fy = (float)y;
+    // float fz = (float)z;
+    // vbb.glVertex(fx, fy, fz);
+    glVertex3f(x, y, z);
 }
 
 extern void glColor3f (GLfloat red, GLfloat green, GLfloat blue)
@@ -1085,14 +1090,15 @@ extern void glColor3f (GLfloat red, GLfloat green, GLfloat blue)
 
 extern void glColor3d (GLdouble red, GLdouble green, GLdouble blue)
 {
-    float fr = (float)red;
-    float fg = (float)green;
-    float fb = (float)blue;
-    float fa = (float)1.0f;
+    // float fr = (float)red;
+    // float fg = (float)green;
+    // float fb = (float)blue;
+    // float fa = (float)1.0f;
 
-    inline_as3("import GLS3D.GLAPI;\n"\
-           "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
-    vbb.glColor(fr, fg, fb, fa);
+    // inline_as3("import GLS3D.GLAPI;\n"\
+           // "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    // vbb.glColor(fr, fg, fb, fa);
+    glColor3f(red, green, blue);
 }
 
 extern void glNormal3f (GLfloat nx, GLfloat ny, GLfloat nz)
@@ -1383,9 +1389,6 @@ extern void glClearIndex (GLfloat c)
 
 extern void glColor3b (GLbyte red, GLbyte green, GLbyte blue)
 {
-    // if(stubMsg) {
-        // fprintf(stderr, "stubbed glColor3b...\n");
-    // }
     float fr = float(red / 255);
     float fg = float(green / 255);
     float fb = float(blue / 255);
@@ -1398,86 +1401,136 @@ extern void glColor3b (GLbyte red, GLbyte green, GLbyte blue)
 
 extern void glColor3bv (const GLbyte *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3bv...\n");
-    }
+    float fr = float(v[0] / 255);
+    float fg = float(v[1] / 255);
+    float fb = float(v[2] / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3dv (const GLdouble *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3dv...\n");
-    }
+    float fr = float(v[0]);
+    float fg = float(v[1]);
+    float fb = float(v[2]);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3i (GLint red, GLint green, GLint blue)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3i...\n");
-    }
+    float fr = float(red / 255);
+    float fg = float(green / 255);
+    float fb = float(blue / 255);
+    float fa = (float)1.0f;
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3iv (const GLint *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3iv...\n");
-    }
+    float fr = float(v[0] / 255);
+    float fg = float(v[1] / 255);
+    float fb = float(v[2] / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3s (GLshort red, GLshort green, GLshort blue)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3s...\n");
-    }
+    float fr = float(red / 255);
+    float fg = float(green / 255);
+    float fb = float(blue / 255);
+    float fa = (float)1.0f;
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3sv (const GLshort *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3sv...\n");
-    }
+    float fr = float(v[0] / 255);
+    float fg = float(v[1] / 255);
+    float fb = float(v[2] / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3ub (GLubyte red, GLubyte green, GLubyte blue)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3ub...\n");
-    }
+    float fr = float(red / 255);
+    float fg = float(green / 255);
+    float fb = float(blue / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3ubv (const GLubyte *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3ubv...\n");
-    }
+    float fr = float(v[0] / 255);
+    float fg = float(v[1] / 255);
+    float fb = float(v[2] / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3ui (GLuint red, GLuint green, GLuint blue)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3ui...\n");
-    }
+    float fr = float(red / 255);
+    float fg = float(green / 255);
+    float fb = float(blue / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3uiv (const GLuint *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3uiv...\n");
-    }
+    float fr = float(v[0] / 255);
+    float fg = float(v[1] / 255);
+    float fb = float(v[2] / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3us (GLushort red, GLushort green, GLushort blue)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3us...\n");
-    }
+    float fr = float(red / 255);
+    float fg = float(green / 255);
+    float fb = float(blue / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor3usv (const GLushort *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glColor3usv...\n");
-    }
+    float fr = float(v[0] / 255);
+    float fg = float(v[1] / 255);
+    float fb = float(v[2] / 255);
+    float fa = 1.0f;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
+    vbb.glColor(fr, fg, fb, fa);
 }
 
 extern void glColor4b (GLbyte red, GLbyte green, GLbyte blue, GLbyte alpha)
@@ -2318,16 +2371,12 @@ extern void glLightf (GLenum light, GLenum pname, GLfloat param)
 
 extern void glLighti (GLenum light, GLenum pname, GLint param)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glLighti...\n");
-    }
+    glLightf(light, pname, (GLfloat)param);
 }
 
 extern void glLightiv (GLenum light, GLenum pname, const GLint *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glLightiv...\n");
-    }
+    glLightf(light, pname, (GLfloat)params[0]);
 }
 
 extern void glLineStipple (GLint factor, GLushort pattern)
@@ -2339,9 +2388,6 @@ extern void glLineStipple (GLint factor, GLushort pattern)
 
 extern void glLineWidth (GLfloat width)
 {
-    // if(stubMsg) {
-        // fprintf(stderr, "stubbed glLineWidth...\n");
-    // }
     vbb.glLineWidth(width);
     // inline_as3("import GLS3D.GLAPI; GLAPI.instance.glLineWidth(%0);" : : "r"(width));
 }
@@ -3096,6 +3142,7 @@ extern GLboolean glIsEnabled (GLenum cap)
     if(stubMsg) {
         fprintf(stderr, "stubbed glIsEnabled...\n");
     }
+    return GL_FALSE;
 }
 
 extern GLboolean glAreTexturesResident (GLsizei x, const GLuint *y, GLboolean *z)
@@ -3103,6 +3150,7 @@ extern GLboolean glAreTexturesResident (GLsizei x, const GLuint *y, GLboolean *z
     if(stubMsg) {
         fprintf(stderr, "stubbed glAreTexturesResident...\n");
     }
+    return GL_FALSE;
 }
 
 extern GLint glRenderMode (GLenum mode)
@@ -3110,6 +3158,7 @@ extern GLint glRenderMode (GLenum mode)
     if(stubMsg) {
         fprintf(stderr, "stubbed glRenderMode...\n");
     }
+    return GL_FALSE;
 }
 
 extern void glTexEnvfv (GLenum target, GLenum pname, const GLfloat *params)
@@ -3135,37 +3184,32 @@ extern void glTexEnviv (GLenum target, GLenum pname, const GLint *params)
 
 extern void glTexGend (GLenum coord, GLenum pname, GLdouble param)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glTexGend...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glTexGeni(%0, %1, %2);\n" : : "r"(coord), "r"(pname), "r"((GLuint)param));
 }
 
 extern void glTexGendv (GLenum coord, GLenum pname, const GLdouble *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glTexGendv...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glTexGeni(%0, %1, %2);\n" : : "r"(coord), "r"(pname), "r"((GLuint)*params));
 }
 
 extern void glTexGenf (GLenum coord, GLenum pname, GLfloat param)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glTexGenf...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glTexGeni(%0, %1, %2);\n" : : "r"(coord), "r"(pname), "r"((GLuint)param));
 }
 
 extern void glTexGenfv (GLenum coord, GLenum pname, const GLfloat *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glTexGenfv...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glTexGeni(%0, %1, %2);\n" : : "r"(coord), "r"(pname), "r"((GLuint)*params));
 }
 
 extern void glTexGeniv (GLenum coord, GLenum pname, const GLint *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glTexGeniv...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glTexGeni(%0, %1, %2);\n" : : "r"(coord), "r"(pname), "r"(*params));
 }
 
 extern void glTexImage1D (GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const GLvoid *pixels)
@@ -3184,9 +3228,8 @@ extern void glTexImage3D (GLenum target, GLint level, GLint internalformat, GLsi
 
 extern void glTexParameteriv (GLenum target, GLenum pname, const GLint *params)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glTexParameteriv...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"\
+           "GLAPI.instance.glTexParameteri(%0, %1, %2);\n" : : "r"(target), "r"(pname), "r"(*params));
 }
 
 extern void glTexSubImage1D (GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLenum type, const GLvoid *pixels)
@@ -3205,26 +3248,17 @@ extern void glTexSubImage3D (GLenum target, GLint level, GLint xoffset, GLint yo
 
 extern void glVertex2d (GLdouble x, GLdouble y)
 {
-    float fx = (float)x;
-    float fy = (float)y;
-    float fz = (float)0.0f;
-    vbb.glVertex(fx, fy, fz);
+    vbb.glVertex(float(x), float(y), 0.0f);
 }
 
 extern void glVertex2dv (const GLdouble *v)
 {
-    float fx = (float)v[0];
-    float fy = (float)v[1];
-    float fz = (float)0.0f;
-    vbb.glVertex(fx, fy, fz);
+    vbb.glVertex(float(*v), float(*(v + 1)), 0.0f);
 }
 
 extern void glVertex2fv (const GLfloat *v)
 {
-    float fx = (float)v[0];
-    float fy = (float)v[1];
-    float fz = (float)0.0f;
-    vbb.glVertex(fx, fy, fz);
+    vbb.glVertex(float(*v), float(*(v + 1)), 0.0f);
 }
 
 extern void glVertex2iv (const GLint *v)
@@ -3243,23 +3277,17 @@ extern void glVertex2s (GLshort x, GLshort y)
 
 extern void glVertex2sv (const GLshort *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertex2sv...\n");
-    }
+    vbb.glVertex(float(*v), float(*(v + 1)), 0.0f);
 }
 
 extern void glVertex3i (GLint x, GLint y, GLint z)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertex3i...\n");
-    }
+    vbb.glVertex(float(x), float(y), float(z));
 }
 
 extern void glVertex3iv (const GLint *v)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glVertex3iv...\n");
-    }
+    vbb.glVertex(float(*v), float(*(v + 1)), float(*(v + 2)));
 }
 
 extern void glVertex3s (GLshort x, GLshort y, GLshort z)
@@ -4051,6 +4079,7 @@ extern GLvoid * glMapBuffer(GLenum target, GLenum access)
     if(stubMsg) {
         fprintf(stderr, "stubbed *...\n");
     }
+    return GL_FALSE;
 }
 
 extern void glGetBufferParameteriv(GLenum target, GLenum pname, GLint *params)
@@ -4781,6 +4810,7 @@ extern int glGetAttribLocation (GLuint program, const GLchar* name)
     if(stubMsg) {
         fprintf(stderr, "stubbed glGetAttribLocation...\n");
     }
+    return GL_FALSE;
 }
 
 extern void glBindAttribLocation (GLuint program, GLuint index, const GLchar *name)
