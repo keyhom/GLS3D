@@ -453,6 +453,14 @@ package GLS3D
                     buf.position = offset + 0;
                     buf.writeInt(4);
                     break;
+                case GL_MAX_DRAW_BUFFERS:
+                    buf.position = offset + 0;
+                    buf.writeInt(8);
+                    break;
+                case GL_SAMPLES:
+                    buf.position = offset + 0;
+                    buf.writeInt(4);
+                    break;
                 default:
                     buf.position = offset+0; buf.writeInt(0);
                     if (log) log.send("[NOTE] Unsupported glGetIntegerv call with 0x" + pname.toString(16))
@@ -1036,6 +1044,13 @@ package GLS3D
                 bufferID++
             }
             return result
+        }
+
+        public function glIsBuffer(id:uint):Boolean
+        {
+            if (id <= bufferID)
+                return false;
+            return (id in buffers);
         }
 
         public function glBindBuffer(target:uint, buffer:uint):void
@@ -2649,6 +2664,11 @@ package GLS3D
             activeFramebuffer.texture = textures[texture]
         }
 
+        public function glIsShader(shader:uint):Boolean
+        {
+            return (shader in shaders);
+        }
+
         public function glCreateShader(type:uint):uint
         {
             if (log2) log2.send( "[IMPLEMENTED] glCreateShader " + type + "\n")
@@ -2674,10 +2694,12 @@ package GLS3D
 
             var shaderInstance:ShaderInstance = shaders[shader]
             shaderInstance.json = obj
-            if (shaderInstance.type == GL_VERTEX_SHADER)
-                agalAssembler.assemble(Context3DProgramType.VERTEX, source)
-            else
-                agalAssembler.assemble(Context3DProgramType.FRAGMENT, source)
+            if (source) {
+                if (shaderInstance.type == GL_VERTEX_SHADER)
+                    agalAssembler.assemble(Context3DProgramType.VERTEX, source)
+                else
+                    agalAssembler.assemble(Context3DProgramType.FRAGMENT, source)
+            }
 
             shaderInstance.agalcode = agalAssembler.agalcode
         }
@@ -2685,6 +2707,11 @@ package GLS3D
         public function glCompileShader(shader:uint):void
         {
             // We already compiled everything in glShaderSource()
+        }
+
+        public function glIsProgram(program:uint):Boolean
+        {
+            return (program in programs);
         }
 
         public function glCreateProgram():uint
@@ -2710,6 +2737,30 @@ package GLS3D
                 programInstance.vertexShader = shaderInstance
             else
                 programInstance.fragmentShader = shaderInstance
+        }
+
+        public function glGetAttribLocation(program:uint, name:String):int
+        {
+            var programInstance:ProgramInstance = programs[program]
+            var op:String = programInstance.vertexShader.json["varnames"][name]
+            if (op)
+            {
+                var index:int = -1;
+                var opIndex:uint = uint(op.charAt(2));
+                for (var i:* in programInstance.attribMap)
+                {
+                    if (programInstance.attribMap[i] == opIndex)
+                    {
+                        // found.
+                        index = int(i);
+                    }
+                }
+
+                if (index == -1)
+                    return opIndex;
+            }
+
+            return -1;
         }
 
         public function glBindAttribLocation(program:uint, index:uint, name:String):void
@@ -2761,7 +2812,7 @@ package GLS3D
 
         public function setVertexBuffer(index:uint, buffer:uint, offset:uint, elementSize:uint):void
         {
-            if (log2) log2.send("setVertexBuffer: index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");
+            if (log2) log2.send("setVertexBuffer (setting): index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");
 
             // We can no resolve agalIndex for specified vertexAttribute without active program
             if (!activeProgramInstance) {
@@ -2773,12 +2824,16 @@ package GLS3D
             var vertexBufferFormat:String = getVertexBufferFormat(elementSize);
 
             // Offset is divided by 4 because Stage3D needs offset in 32-bit words
-            context.setVertexBufferAt(agalIndex, bufferInstance.vertexBuffer, offset / 4, vertexBufferFormat)
+            // context.setVertexBufferAt(agalIndex, bufferInstance.vertexBuffer, offset / 4, vertexBufferFormat)
+            context.setVertexBufferAt(index, bufferInstance.vertexBuffer, offset / 4, vertexBufferFormat)
+
+            if (log2) log2.send("setVertexBuffer (setted): agalIndex: " +
+                    agalIndex + " format: " + vertexBufferFormat + " index: " + index + " buffer: " + buffer + " offset: " + offset + " elementSize: " + elementSize + "\n");
         }
 
         public function uploadVertexBuffer(buffer:uint, stride:uint):void
         {
-            if (log2) log2.send("[IMPLEMENTED] uploadVertexBuffer buffer: " + buffer + "\n")
+            if (log2) log2.send("[IMPLEMENTED] uploadVertexBuffer uploading buffer: " + buffer + "\n")
 
             var bufferInstance:BufferInstance = buffers[buffer]
             if (!bufferInstance.uploaded)
@@ -2798,6 +2853,7 @@ package GLS3D
                 bufferInstance.vertexBuffer.uploadFromByteArray(bufferInstance.data, 0, 0, bufferInstance.data.length / bufferInstance.stride)
                 bufferInstance.data = null
                 bufferInstance.uploaded = true
+                if (log2) log2.send("[IMPLEMENTED] uploadVertexBuffer uploaded buffer: " + buffer + "\n")
             }
         }
 
@@ -2831,6 +2887,8 @@ package GLS3D
         public function glDrawTriangles(vertexCount:uint, stripe:Boolean) {
             if (activeElementArrayBuffer == null && _indexBuffer == null)
             {
+                if (log2) log2.send("glDrawTriangles: Generating index buffer.\n")
+
                 var indexValues:Vector.<uint> = null
                 var indexCount:uint = 0
                 var i:uint = 0

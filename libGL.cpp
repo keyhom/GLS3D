@@ -72,6 +72,16 @@ extern "C" {
 extern int __libgl_abc__;
 void __libgl_abc__linker_hack() { __libgl_abc__ = 0; }
 
+static inline GLsizei nearest_power_of_2(GLsizei x) {
+    x--;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x++;
+    return (x);
+}
 
 //=======================================================================
 //		CONSTANTS & MACROS
@@ -635,6 +645,17 @@ extern void glMatrixMode (GLenum mode)
 
 extern void glTexImage2D (GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels)
 {
+    GLsizei pw = nearest_power_of_2(width);
+    GLsizei ph = nearest_power_of_2(height);
+
+    if (pw != width || ph != height) {
+        // Non-Power of two
+        // gluScaleImage(GLenum format, GLsizei widthin, GLsizei heightin,
+                    // GLenum typein, const void *datain,
+                    // GLsizei widthout, GLsizei heightout, GLenum typeout,
+                    // void *dataout)
+    }
+
     inline_as3("import GLS3D.GLAPI;\n"\
            "GLAPI.instance.glTexImage2D(%0, %1, %2, %3, %4, %5, %6, %7, %8, ram);\n" : :
                "r"(target), "r"(level), "r"(internalformat), "r"(width), "r"(height), "r"(border), "r"(format), "r"(type), "r"(pixels));
@@ -1142,14 +1163,20 @@ do {\
 static const char *GL_VENDOR_str="Adobe";
 static const char *GL_RENDERER_str="Stage3D";
 static const char *GL_VERSION_str="2.1";
+static const char *GL_SHADING_LANGUAGE_VERSION_str ="1.30";
 // static const char *GL_EXTENSIONS_str="GL_EXT_compiled_vertex_array";
 static const char *GL_EXTENSIONS_strs[] = {
+    "GL_ARB_compatibility",
     "GL_ARB_multitexture",
+    "GL_ARB_multisample",
     "GL_EXT_compiled_vertex_array",
     "GL_EXT_texture_env_combine",
+    "GL_ARB_texture_non_power_of_two",
+    "GL_EXT_framebuffer_object",
+    "GL_ARB_draw_buffers",
     ""
 };
-static const char *GL_default_str="";
+static const char *GL_default_str="\0";
 static char *GL_EXTENSIONS_cacheStr = NULL;
 
 
@@ -1162,6 +1189,8 @@ extern const GLubyte * glGetString (GLenum name)
         return (const GLubyte*)GL_RENDERER_str;
     case GL_VERSION:
         return (const GLubyte*)GL_VERSION_str;
+    case GL_SHADING_LANGUAGE_VERSION:
+        return (const GLubyte*)GL_SHADING_LANGUAGE_VERSION_str;
     case GL_EXTENSIONS:
         if (NULL == GL_EXTENSIONS_cacheStr) {
             size_t count = sizeof(GL_EXTENSIONS_strs) / sizeof(void *);
@@ -4039,6 +4068,16 @@ extern void glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params)
     }
 }
 
+extern GLboolean glIsBuffer(GLuint id)
+{
+    if (id == 0)
+        return false;
+    else {
+        inline_as3("import GLS3D.GLAPI;\n"\
+          "GLAPI.instance.glIsBuffer(%0)\n" :: "r"(id));
+    }
+}
+
 extern void glBindBuffer(GLenum target, GLuint buffer)
 {
     if (target == GL_ARRAY_BUFFER) {
@@ -4403,6 +4442,8 @@ static void uploadVertexData(VertexAttribute attribute, GLint first, GLsizei cou
         bufferPointer += elementSize;
       }
 
+      fprintf(stderr, "attribute(#%d)'s buffer binding with 0, so generated the buffer and go on.'", attribute.index);
+
       // no more forchick - pass dat data!
       inline_as3("import GLS3D.GLAPI;\n"\
                  "GLAPI.instance.setVertexData(%0, %1, ram, %2, %3, %4);\n" :: "r"(attribute.index), "r"(attribute.type), "r"(buffer), "r"(bufferByteSize), "r"(elementSize));
@@ -4473,8 +4514,9 @@ extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoi
       }
     }
 
-    inline_as3("import GLS3D.GLAPI;\n"\
-      "GLAPI.instance.setIndexBuffer(ram, %0, %1);\n" :: "r"(indices), "r"(count));
+    if (indices)
+        inline_as3("import GLS3D.GLAPI;\n"\
+          "GLAPI.instance.setIndexBuffer(ram, %0, %1);\n" :: "r"(indices), "r"(count));
 
     bool stripe = false;
     inline_as3("import GLS3D.GLAPI;\n"\
@@ -4484,13 +4526,13 @@ extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoi
 extern void glEnableVertexAttribArray(GLuint index)
 {
     attributeStatuses[index] = true;
-    // fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray");
+    fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray: %u", index);
 }
 
 extern void glDisableVertexAttribArray (GLuint index)
 {
     attributeStatuses[index] = false;
-    // fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray");
+    fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray: %u", index);
 }
 
 extern void glGetVertexAttribdv (GLuint index, GLenum pname, GLdouble *params)
@@ -4519,6 +4561,17 @@ extern void glGetVertexAttribPointerv (GLuint index, GLenum pname, GLvoid* *poin
     if(stubMsg) {
         fprintf(stderr, "stubbed glGetVertexAttribPointerv...\n");
     }
+}
+
+extern GLboolean glIsShader(GLuint shader)
+{
+    if (shader == 0)
+        return GL_FALSE;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glIsShader(%0);\n" :: "r"(shader));
+    GLboolean ret = GL_FALSE;
+    AS3_GetScalarFromVar(ret, result);
+    return ret;
 }
 
 extern GLuint glCreateShader (GLenum type)
@@ -4554,6 +4607,18 @@ extern void glCompileShader (GLuint shader)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
                "GLAPI.instance.glCompileShader(%0);\n" :: "r"(shader));
+}
+
+extern GLboolean glIsProgram(GLuint program)
+{
+    if (program == 0)
+        return GL_FALSE;
+
+    GLboolean ret = 0;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glIsProgram(%0);\n" :: "r"(program));
+    AS3_GetScalarFromVar(ret, result);
+    return ret;
 }
 
 extern GLuint glCreateProgram (void)
@@ -4668,8 +4733,11 @@ extern void glUniform3fv (GLint location, GLsizei count, const GLfloat *value)
 
 extern void glUniform4fv (GLint location, GLsizei count, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform4fv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 4;
+        inline_as3("import GLS3D.GLAPI;\n"\
+          "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4)\n" :: "r"(location), "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(value[base + 3]));
     }
 }
 
@@ -4807,10 +4875,12 @@ extern void glGetShaderSource (GLuint shader, GLsizei bufSize, GLsizei *length, 
 
 extern int glGetAttribLocation (GLuint program, const GLchar* name)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glGetAttribLocation...\n");
-    }
-    return GL_FALSE;
+    inline_as3("import GLS3D.GLAPI;\n"\
+      "var result:int = GLAPI.instance.glGetAttribLocation(%0, CModule.readString(%1, %2))\n" :: "r"(program), "r"(name), "r"(strlen(name)));
+    GLint r = -1;
+    AS3_GetScalarFromVar(r, result);
+
+    return r;
 }
 
 extern void glBindAttribLocation (GLuint program, GLuint index, const GLchar *name)

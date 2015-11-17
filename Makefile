@@ -68,12 +68,12 @@ check:
 	else echo "Couldn't locate FLASCC sdk directory, please invoke make with \"make FLASCC=/path/to/FLASCC/sdk ...\"" ; exit 1 ; \
 	fi
 
-	@if [ -d "$(FLEX)/bin" ] ; then true ; \
-	else echo "Couldn't locate Flex sdk directory, please invoke make with \"make FLEX=/path/to/flex  ...\"" ; exit 1 ; \
-	fi
+	# @if [ -d "$(FLEX)/bin" ] ; then true ; \
+	# else echo "Couldn't locate Flex sdk directory, please invoke make with \"make FLEX=/path/to/flex  ...\"" ; exit 1 ; \
+	# fi
 
 install: check
-	# @cp -rf install/usr/include/ $(FLASCC)/usr/include
+	@cp -rf install/usr/include/ $(FLASCC)/usr/include
 	@cp -rf install/usr/lib/* $(FLASCC)/usr/lib
 	# @cp $(FLASCC)/usr/SDL_opengl.h $(FLASCC)/usr/include/SDL/
 
