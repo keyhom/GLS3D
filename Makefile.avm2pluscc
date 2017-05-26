@@ -1,0 +1,47 @@
+CC:=$(CC)
+CXX:=$(CXX)
+PREFIX:=$(PREFIX)
+AR:=$(AR)
+ASC2:=asc2
+
+ifeq (,$(USERPROFILE))
+	$?SYS_CACHE:=$(HOME)/.avm2pluscc_cache
+else
+	$?SYS_CACHE:=$(subst \,/,$(USERPROFILE)/.avm2pluscc_cache)
+endif
+
+compile:
+	rm -rf install/usr/lib
+	mkdir -p install/usr/lib
+	mkdir -p install/usr/include
+
+	@echo "Compiling libGL.as"
+	$(ASC2) -merge -md -parallel -strict -optimize -abcfuture -AS3 \
+	-import $(SYS_CACHE)/builtin.abc \
+	-import $(SYS_CACHE)/playerglobal.abc \
+	-import $(SYS_CACHE)/BinaryData.abc \
+	-import $(SYS_CACHE)/C_Run.abc \
+	-import $(SYS_CACHE)/CModule.abc \
+	-in src/com/adobe/utils/v3/AGALMiniAssembler.as \
+	libGL.as
+	@mv libGL.abc install/usr/lib/
+
+	@echo "Compiling libGL.cpp"
+	$(CXX) -fno-exceptions -O2 -c -Iinstall/usr/include/ libGL.cpp
+	$(AR) crus install/usr/lib/libGL.a install/usr/lib/libGL.abc libGL.o
+	@echo "Compiling mipmap.c quad.c"
+	$(CC) -fno-exceptions -O2 -c -Iinstall/usr/include/ -Linstall/usr/lib mipmap.c
+	$(CC) -fno-exceptions -O2 -c -Iinstall/usr/include/ -Linstall/usr/lib quad.c
+	$(AR) crus install/usr/lib/libGLU.a mipmap.o quad.o
+
+install::
+	@mkdir -p $(PREFIX)/usr/include
+	@mkdir -p $(PREFIX)/usr/include/SDL
+	@mkdir -p $(PREFIX)/usr/lib
+	@rm -rf install/usr/lib/*.abc
+	cp -rf install/usr/include/* $(PREFIX)/usr/include
+	cp -rf install/usr/lib/* $(PREFIX)/usr/lib
+
+all: compile install
+
+
