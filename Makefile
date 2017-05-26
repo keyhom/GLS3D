@@ -35,20 +35,24 @@ compile: check
 	-import $(call nativepath,$(FLASCC)/usr/lib/BinaryData.abc) \
 	-import $(call nativepath,$(FLASCC)/usr/lib/C_Run.abc) \
 	-import $(call nativepath,$(FLASCC)/usr/lib/CModule.abc) \
-	-in src/com/adobe/utils/AGALMiniAssembler.as \
-	-in src/com/adobe/utils/AGALMacroAssembler.as \
-	-in src/com/adobe/utils/FractalGeometryGenerator.as \
-	-in src/com/adobe/utils/PerspectiveMatrix3D.as \
-	-in src/com/adobe/utils/macro/AGALPreAssembler.as \
-	-in src/com/adobe/utils/macro/AGALVar.as \
-	-in src/com/adobe/utils/macro/Expression.as \
-	-in src/com/adobe/utils/macro/BinaryExpression.as \
-	-in src/com/adobe/utils/macro/ExpressionParser.as \
-	-in src/com/adobe/utils/macro/NumberExpression.as \
-	-in src/com/adobe/utils/macro/UnaryExpression.as \
-	-in src/com/adobe/utils/macro/VariableExpression.as \
-	-in src/com/adobe/utils/macro/VM.as \
+	-in src/com/adobe/utils/v3/AGALMiniAssembler.as \
 	libGL.as
+	@mv libGL.abc install/usr/lib/
+
+	# -in src/com/adobe/utils/extended/AGALMiniAssembler.as \
+	# -in src/com/adobe/utils/AGALMiniAssembler.as \
+	# -in src/com/adobe/utils/AGALMacroAssembler.as \
+	# -in src/com/adobe/utils/FractalGeometryGenerator.as \
+	# -in src/com/adobe/utils/PerspectiveMatrix3D.as \
+	# -in src/com/adobe/utils/macro/AGALPreAssembler.as \
+	# -in src/com/adobe/utils/macro/AGALVar.as \
+	# -in src/com/adobe/utils/macro/Expression.as \
+	# -in src/com/adobe/utils/macro/BinaryExpression.as \
+	# -in src/com/adobe/utils/macro/ExpressionParser.as \
+	# -in src/com/adobe/utils/macro/NumberExpression.as \
+	# -in src/com/adobe/utils/macro/UnaryExpression.as \
+	# -in src/com/adobe/utils/macro/VariableExpression.as \
+	# -in src/com/adobe/utils/macro/VM.as \
 	@mv libGL.abc install/usr/lib/
 
 	@echo "Compiling libGL.cpp"

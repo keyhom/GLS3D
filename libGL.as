@@ -39,13 +39,13 @@ package GLS3D
     import flash.events.KeyboardEvent;
     import flash.events.TextEvent;
     import flash.geom.*;
+    import flash.system.Capabilities;
     import flash.text.TextField;
     import flash.text.TextFieldType;
     import flash.trace.Trace;
     import flash.utils.*;
 
-    import com.adobe.utils.*;
-    import com.adobe.utils.macro.*;
+    import com.adobe.utils.v3.*;
     import com.adobe.flascc.CModule;
 
     // Linker trickery
@@ -82,11 +82,12 @@ package GLS3D
         // bit 18 = whether polygon offset is enabled
         private const ENABLE_POLYGON_OFFSET:uint = 18
 
-        private var _stage:Stage
-        private var overrideR:uint
-        private var overrideG:uint
-        private var overrideB:uint
-        private var overrideA:uint = 0xFF
+        private var _stage:Stage;
+        private var _agalVersion:uint;
+        private var overrideR:uint;
+        private var overrideG:uint;
+        private var overrideB:uint;
+        private var overrideA:uint = 0xFF;
         private var scissorRect:Rectangle
         private var contextEnableScissor:Boolean = false
         private var bgColorOverride:Boolean = false
@@ -191,10 +192,9 @@ package GLS3D
         private var cubeVertexBuffer:VertexBuffer3D = null;
         private var agalAssembler:AGALMiniAssembler = null
 
-        public static function init(context:Context3D, log:Object, stage:Stage):void
-        {
-            _instance = new GLAPI(context, log, stage)
-            if (log) log.send("GLAPI initialized.")
+        public static function init(context:Context3D, stage:Stage, log:Object = null, log2:Object = null, useAgalVersion:uint = 0):void {
+            _instance = new GLAPI(context, stage, log, log2, useAgalVersion);
+            (log || log2 || { send: trace }).send("GLAPI initialized.");
         }
 
         public static function get instance():GLAPI
@@ -205,6 +205,8 @@ package GLS3D
             }
             return _instance
         }
+
+        public function get agalVersion():uint { return _agalVersion; }
 
         public function send(value:String):void
         {
@@ -1895,16 +1897,53 @@ package GLS3D
             executeCommandList(commandLists[id])
         }
 
-        public function GLAPI(context:Context3D, log:Object, stage:Stage):void
+        public function GLAPI(context:Context3D, stage:Stage, log:Object, log2:Object, useAgalVersion:uint):void
         {
             // For the debug console
-            _stage = stage
+            _stage = stage;
+            // passing the agal version by external.
+            _agalVersion = useAgalVersion;
 
-            this.log = new TraceLog()
-            this.log2 = new TraceLog()
-            this.context = context
+            this.log = log;
+            this.log2 = log2;
 
-            agalAssembler = new AGALMiniAssembler()
+            var agalVersionResolved:Boolean = _agalVersion > 0;
+
+            var logObj:Object = this.log || this.log2;
+
+            if (!agalVersionResolved) {
+                // Auto selected the most suitable AGAL version.
+                var matches:Array = /^(\w+)\s+\((\w+)\s*(\w+)?\)$/g.exec(context.driverInfo);
+                if (matches && matches.length > 1) {
+                    var extended:Boolean = matches.length > 3 && matches[3] == "Extended";
+                    if (logObj) {
+                        logObj.send("Driver API: " + matches[1] + "\n");
+                        logObj.send("Driver Base Profile: " + matches[2] + "\n");
+                        logObj.send("Driver Extended: " + (extended ? "true" : "false"));
+                    }
+
+                    if (matches[2] == "Standard" && extended) {
+                        _agalVersion = 3;
+                    } else if (matches[2] == "Standard") {
+                        _agalVersion = 2;
+                    } else {
+                        _agalVersion = 1;
+                    }
+
+                    agalVersionResolved = true;
+                } else {
+                    // any doesn't had a HW acc, make basic agal working.
+                    _agalVersion = 1;
+                }
+            }
+
+            if (logObj) {
+                logObj.send("Selected AGAL version: " + agalVersion + "\n");
+            }
+
+            this.context = context;
+
+            agalAssembler = new AGALMiniAssembler();
 
             // id zero is null
             vertexBufferObjects.push(null);
@@ -2690,18 +2729,24 @@ package GLS3D
             var obj:Object = JSON.parse(json);
             var source:String = obj["agalasm"]
 
-            if (log2) log2.send( "[IMPLEMENTED] glShaderSource " + source + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glShaderSource(#agalVersion " +
+                    _agalVersion + ") \n" + source + "\n")
 
             var shaderInstance:ShaderInstance = shaders[shader]
             shaderInstance.json = obj
-            if (source) {
-                if (shaderInstance.type == GL_VERTEX_SHADER)
-                    agalAssembler.assemble(Context3DProgramType.VERTEX, source)
-                else
-                    agalAssembler.assemble(Context3DProgramType.FRAGMENT, source)
-            }
+            // NOTE: comment below lines and moves to the glLinkProgram, there's
+            // some varying may be need to sync with.
 
-            shaderInstance.agalcode = agalAssembler.agalcode
+            /* if (source) { */
+                /* if (shaderInstance.type == GL_VERTEX_SHADER) */
+                    /* agalAssembler.assemble(Context3DProgramType.VERTEX, source, */
+                            /* _agalVersion); */
+                /* else */
+                    /* agalAssembler.assemble(Context3DProgramType.FRAGMENT, */
+                            /* source, _agalVersion); */
+            /* } */
+
+            /* shaderInstance.agalcode = agalAssembler.agalcode; */
         }
 
         public function glCompileShader(shader:uint):void
@@ -2746,7 +2791,7 @@ package GLS3D
             if (op)
             {
                 var index:int = -1;
-                var opIndex:uint = uint(op.charAt(2));
+                var opIndex:uint = uint(op.substr(2)); // vaX
                 for (var i:* in programInstance.attribMap)
                 {
                     if (programInstance.attribMap[i] == opIndex)
@@ -2770,7 +2815,7 @@ package GLS3D
             var op:String = programInstance.vertexShader.json["varnames"][name]
             if (op)
             {
-                var opIndex:uint = uint(op.charAt(2))
+                var opIndex:uint = uint(op.substr(2))
                 programInstance.attribMap[index] = opIndex
                 if (log2) log2.send("glBindAttribLocation " + index + " : " + name + " -> " + op + " -> " + opIndex + "\n")
             }
@@ -2935,9 +2980,53 @@ package GLS3D
         {
             if (log2) log2.send( "[IMPLEMENTED] glLinkProgram from " + program + "\n")
 
-            var programInstance:ProgramInstance = programs[program]
+            var programInstance:ProgramInstance = programs[program];
 
-            programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
+            // NOTE: The agalcode both of vertex and fragment shaders should be null now.
+            // NOTE: Resolve the fragment shader's varying opCode index correct to
+            // vertex shader's varying opCode index..
+
+            var vertSource:String = programInstance.vertexShader.json["agalasm"];
+            var fragSource:String = programInstance.fragmentShader.json["agalasm"];
+            var fragVarnames:Object = programInstance.fragmentShader.json["varnames"];
+            var vertVarnames:Object = programInstance.vertexShader.json["varnames"];
+
+            var replaceVars:Object = { };
+            var matches:Array;
+
+            for (var fvKey:* in fragVarnames) {
+                if ((matches = fragVarnames[fvKey].match(/v\d+/) || []).length > 0) {
+                    // varying found.
+                    // must be in the vertVarnames.
+                    if (vertVarnames[fvKey] == fragVarnames[fvKey])
+                        continue;
+                    replaceVars[fragVarnames[fvKey]] = vertVarnames[fvKey];
+                }
+            }
+
+            var replaced:Boolean = false;
+            for (var rk:* in replaceVars) {
+                if (log2) log2.send("Syncing fragment shader's varying " + rk + " into vertex shader's varying " + replaceVars[rk] + "\n");
+                fragSource = fragSource.replace(rk, replaceVars[rk]);
+                replaced = true;
+            }
+
+            if (replaced && log2) {
+                log2.send("Post processing fragment shader's source: \n" + fragSource + "\n");
+            }
+
+            agalAssembler.assemble(Context3DProgramType.VERTEX, vertSource, _agalVersion);
+            programInstance.vertexShader.agalcode = agalAssembler.agalcode;
+
+            agalAssembler.assemble(Context3DProgramType.FRAGMENT, fragSource, _agalVersion);
+            programInstance.fragmentShader.agalcode = agalAssembler.agalcode;
+
+            try {
+                programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
+            } catch (e:Error) {
+                log2 && log2.send("Program Link Error: " + e.errorID + " " + e.text + "\n" + e.getStackTrace());
+                throw e;
+            }
         }
 
         public function glGetUniformLocation(program:uint, name:String):uint
@@ -2955,7 +3044,7 @@ package GLS3D
                 variableHandles[variableID] = new VariableHandle()
                 variableHandles[variableID].id = variableID
                 variableHandles[variableID].shader = programInstance.vertexShader
-                variableHandles[variableID].number = uint(constantRegister.charAt(2))
+                variableHandles[variableID].number = uint(constantRegister.substr(2))
                 variableHandles[variableID].name = constantRegister
 
                 return variableID;
@@ -2968,7 +3057,7 @@ package GLS3D
                 variableHandles[variableID] = new VariableHandle()
                 variableHandles[variableID].id = variableID
                 variableHandles[variableID].shader = programInstance.fragmentShader
-                variableHandles[variableID].number = uint(constantRegister.charAt(2))
+                variableHandles[variableID].number = uint(constantRegister.substr(2))
                 variableHandles[variableID].name = constantRegister
 
                 return variableID;
@@ -2998,16 +3087,21 @@ package GLS3D
 
             var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
             context.setProgramConstantsFromVector(shaderType, variableHandle.number, Vector.<Number>([v0, v1, v2, v3]))
+
+            if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) uniform location(" + handle + ") set constants resolved as " +
+                    variableHandle.name + "\nregister to opIndex " + variableHandle.number + " width values [" +
+                    v0 + "," + v1 + "," + v2 + "," + v3
+                    + "]");
         }
 
         public function glUniformMatrix4f(handle:uint, transpose:Boolean, v0:Number, v1:Number, v2:Number, v3:Number, v4:Number, v5:Number, v6:Number, v7:Number, v8:Number, v9:Number, v10:Number, v11:Number, v12:Number, v13:Number, v14:Number, v15:Number):void
         {
-            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f " + handle + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f with location " + handle + "\n")
 
             var variableHandle = variableHandles[handle]
             var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
 
-            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f setting float4x4 into " + variableHandle.number + " for " + shaderType + "\n")
+            if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f setting float4x4 into vc" + variableHandle.number + " for " + shaderType + "\n")
             if (log2) log2.send( "[IMPLEMENTED] glUniformMatrix4f value = " + v0 + " " + v1 + " " + v2 + " " + v3 + "\n"
                     + v4 + " " + v5 + " " + v6 + " " + v7 + "\n"
                     + v8 + " " + v9 + " " + v10 + " " + v11 + "\n"
@@ -3041,13 +3135,13 @@ package GLS3D
             var consts:Object = programInstance.vertexShader.json["consts"];
             for(constantName in consts) {
                 if (log2) log2.send( "[IMPLEMENTED] glUseProgram: Setting vertex const " + constantName + " for " + program + "\n")
-                context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, uint(constantName.charAt(2)), Vector.<Number>(consts[constantName]))
+                context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, uint(constantName.substr(2)), Vector.<Number>(consts[constantName]))
             }
 
             consts = programInstance.fragmentShader.json["consts"];
             for(constantName in consts) {
                 if (log2) log2.send( "[IMPLEMENTED] glUseProgram: Setting fragment const " + constantName + " for " + program + "\n")
-                context.setProgramConstantsFromVector(Context3DProgramType.FRAGMENT, uint(constantName.charAt(2)), Vector.<Number>(consts[constantName]))
+                context.setProgramConstantsFromVector(Context3DProgramType.FRAGMENT, uint(constantName.substr(2)), Vector.<Number>(consts[constantName]))
             }
 
             context.setTextureAt(1, null)
@@ -3519,6 +3613,9 @@ class TraceLog
 {
     public function send(value:String):void
     {
+        if (value.indexOf('\n') == value.length - 1)
+            value = value.slice(0, value.length - 1);
+        value = getTimer().toString() + " " + value;
         trace(value)
     }
 }

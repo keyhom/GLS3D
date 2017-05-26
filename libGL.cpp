@@ -1160,25 +1160,24 @@ do {\
     }\
 } while (0)
 
-static const char *GL_VENDOR_str="Adobe";
-static const char *GL_RENDERER_str="Stage3D";
-static const char *GL_VERSION_str="2.1";
-static const char *GL_SHADING_LANGUAGE_VERSION_str ="1.30";
-// static const char *GL_EXTENSIONS_str="GL_EXT_compiled_vertex_array";
-static const char *GL_EXTENSIONS_strs[] = {
+static const char *GL_VENDOR_str                   = "Adobe";
+static const char *GL_RENDERER_str                 = "Stage3D";
+static const char *GL_VERSION_str                  = "2.1";
+static const char *GL_SHADING_LANGUAGE_VERSION_str = "1.30";
+static const char *GL_EXTENSIONS_strs[]            = {
     "GL_ARB_compatibility",
     "GL_ARB_multitexture",
     "GL_ARB_multisample",
     "GL_EXT_compiled_vertex_array",
     "GL_EXT_texture_env_combine",
-    "GL_ARB_texture_non_power_of_two",
     "GL_EXT_framebuffer_object",
     "GL_ARB_draw_buffers",
+    "ADOBE_AGAL_1",
     ""
 };
 static const char *GL_default_str="\0";
 static char *GL_EXTENSIONS_cacheStr = NULL;
-
+static char *RUNTIME_EXTENSIONS_cacheStr = NULL;
 
 extern const GLubyte * glGetString (GLenum name)
 {
@@ -1192,6 +1191,7 @@ extern const GLubyte * glGetString (GLenum name)
     case GL_SHADING_LANGUAGE_VERSION:
         return (const GLubyte*)GL_SHADING_LANGUAGE_VERSION_str;
     case GL_EXTENSIONS:
+    {
         if (NULL == GL_EXTENSIONS_cacheStr) {
             size_t count = sizeof(GL_EXTENSIONS_strs) / sizeof(void *);
             size_t memreq = 0;
@@ -1199,13 +1199,41 @@ extern const GLubyte * glGetString (GLenum name)
                 memreq += strlen(GL_EXTENSIONS_strs[i]) + 1;
             }
 
+            size_t ai_offset = 0;
+            if (NULL == RUNTIME_EXTENSIONS_cacheStr) {
+                unsigned int agalVersion = 0;
+
+                RUNTIME_EXTENSIONS_cacheStr = (char *) malloc(4096);
+
+                inline_as3("import GLS3D.GLAPI;\n" \
+                           "%0 = GLAPI.instance.agalVersion;" : "=r"(agalVersion) :
+                           );
+
+                for (int ai = 2; ai <= agalVersion; ++ai) {
+                    ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, "ADOBE_AGAL_%u", ai);
+                    if (ai < agalVersion) {
+                        ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, "%c", ' ');
+                    }
+                }
+
+                if (agalVersion >= 2) {
+                    ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, " %s", "GL_ARB_texture_non_power_of_two");
+                    if (agalVersion >= 3) {
+                        ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, " %s", "GL_EXT_texture_filter_anisotropic");
+                    }
+                }
+            }
+
             if (memreq)
-                GL_EXTENSIONS_cacheStr = (char *) malloc(memreq + 1);
+                GL_EXTENSIONS_cacheStr = (char *) malloc(memreq + ai_offset + 1);
 
             __CHARSTRING_JOIN(GL_EXTENSIONS_cacheStr, GL_EXTENSIONS_strs, count, ' ');
+            sprintf(GL_EXTENSIONS_cacheStr + memreq - 2, " %s", RUNTIME_EXTENSIONS_cacheStr);
+            printf("GL extension: %s\n", GL_EXTENSIONS_cacheStr);
         }
         return (const GLubyte *)GL_EXTENSIONS_cacheStr;
         // return (const GLubyte*)GL_EXTENSIONS_str;
+    }
     default:
         inline_as3("import GLS3D.GLAPI;\n"\
            "GLAPI.instance.send('glGetString not yet implemented. for ' + %0);" :  : "r"(name));
@@ -1936,9 +1964,9 @@ extern void glFinish (void)
 
 extern void glFlush (void)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glFlush...\n");
-    }
+    // if(stubMsg) {
+        // fprintf(stderr, "stubbed glFlush...\n");
+    // }
 }
 
 extern void glFogf (GLenum pname, GLfloat param)
@@ -2951,9 +2979,9 @@ extern void glSeparableFilter2D (GLenum target, GLenum internalformat, GLsizei w
 
 extern void glStencilMask (GLuint mask)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glStencilMask...\n");
-    }
+    // if(stubMsg) {
+        // fprintf(stderr, "stubbed glStencilMask...\n");
+    // }
 }
 
 extern void glTexCoord1d (GLdouble s)
