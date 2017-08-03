@@ -63,6 +63,7 @@ package GLS3D
         public var log2:Object = null; // new TraceLog();
         public var context:Context3D
         public var genOnBind:Boolean = false
+        public var viewportDelegator:Function;
 
         private const consts:Vector.<Number> = new <Number>[0.0, 0.5, 1.0, 2.0]
         private const zeroes:Vector.<Number> = new <Number>[0.0, 0.0, 0.0, 0.0]
@@ -3216,9 +3217,13 @@ package GLS3D
 
         public function glViewport(x:uint, y:uint, width:uint, height:uint):void
         {
-            if (log2) log2.send("[IMPLEMENTED] glViewport invoked with " + x + ", " + y + ", " + width + ", " + height + "\n")
-            // context.configureBackBuffer(width, height, 0, false)
-            context.configureBackBuffer(width, height, 4)
+            if (log2) log2.send("[IMPLEMENTED] glViewport invoked with " + x +
+                    ", " + y + ", " + width + ", " + height + "\n");
+            if ( null != viewportDelegator ) {
+                viewportDelegator( x, y, width, height );
+            } else {
+                context.configureBackBuffer(width, height, 0, false);
+            }
         }
 
         public function glDepthRangef(near:Number, far:Number):void
