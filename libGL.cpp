@@ -70,6 +70,7 @@ extern "C" {
 
 // Force libGL.abc to get linked in
 extern int __libgl_abc__;
+__attribute__((used))
 void __libgl_abc__linker_hack() { __libgl_abc__ = 0; }
 
 static inline GLsizei nearest_power_of_2(GLsizei x) {
@@ -1160,85 +1161,17 @@ do {\
     }\
 } while (0)
 
-static const char *GL_VENDOR_str                   = "Adobe";
-static const char *GL_RENDERER_str                 = "Stage3D";
-static const char *GL_VERSION_str                  = "2.1";
-static const char *GL_SHADING_LANGUAGE_VERSION_str = "1.30";
-static const char *GL_EXTENSIONS_strs[]            = {
-    "GL_ARB_compatibility",
-    "GL_ARB_multitexture",
-    "GL_ARB_multisample",
-    "GL_EXT_compiled_vertex_array",
-    "GL_EXT_texture_env_combine",
-    "GL_EXT_framebuffer_object",
-    "GL_ARB_draw_buffers",
-    "ADOBE_AGAL_1",
-    ""
-};
-static const char *GL_default_str="\0";
-static char *GL_EXTENSIONS_cacheStr = NULL;
-static char *RUNTIME_EXTENSIONS_cacheStr = NULL;
-
 extern const GLubyte * glGetString (GLenum name)
 {
-    switch(name) {
-    case GL_VENDOR:
-        return (const GLubyte*)GL_VENDOR_str;
-    case GL_RENDERER:
-        return (const GLubyte*)GL_RENDERER_str;
-    case GL_VERSION:
-        return (const GLubyte*)GL_VERSION_str;
-    case GL_SHADING_LANGUAGE_VERSION:
-        return (const GLubyte*)GL_SHADING_LANGUAGE_VERSION_str;
-    case GL_EXTENSIONS:
-    {
-        if (NULL == GL_EXTENSIONS_cacheStr) {
-            size_t count = sizeof(GL_EXTENSIONS_strs) / sizeof(void *);
-            size_t memreq = 0;
-            for (int i = 0; i < count; ++i) {
-                memreq += strlen(GL_EXTENSIONS_strs[i]) + 1;
-            }
+    GLubyte *ret;
+    inline_as3("import GLS3D.GLAPI;\n"
+       "var str:String = GLAPI.instance.glGetString(%1);\n"
+       "trace('glGetString ###', str);\n"
+       "%0 = CModule.mallocString(str);\n"
+       : "=r"(ret)
+       : "r"(name));
 
-            size_t ai_offset = 0;
-            if (NULL == RUNTIME_EXTENSIONS_cacheStr) {
-                unsigned int agalVersion = 0;
-
-                RUNTIME_EXTENSIONS_cacheStr = (char *) malloc(4096);
-
-                inline_as3("import GLS3D.GLAPI;\n" \
-                           "%0 = GLAPI.instance.agalVersion;" : "=r"(agalVersion) :
-                           );
-
-                for (int ai = 2; ai <= agalVersion; ++ai) {
-                    ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, "ADOBE_AGAL_%u", ai);
-                    if (ai < agalVersion) {
-                        ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, "%c", ' ');
-                    }
-                }
-
-                if (agalVersion >= 2) {
-                    ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, " %s", "GL_ARB_texture_non_power_of_two");
-                    if (agalVersion >= 3) {
-                        ai_offset += sprintf(RUNTIME_EXTENSIONS_cacheStr + ai_offset, " %s", "GL_EXT_texture_filter_anisotropic");
-                    }
-                }
-            }
-
-            if (memreq)
-                GL_EXTENSIONS_cacheStr = (char *) malloc(memreq + ai_offset + 1);
-
-            __CHARSTRING_JOIN(GL_EXTENSIONS_cacheStr, GL_EXTENSIONS_strs, count, ' ');
-            sprintf(GL_EXTENSIONS_cacheStr + memreq - 2, " %s", RUNTIME_EXTENSIONS_cacheStr);
-            printf("GL extension: %s\n", GL_EXTENSIONS_cacheStr);
-        }
-        return (const GLubyte *)GL_EXTENSIONS_cacheStr;
-        // return (const GLubyte*)GL_EXTENSIONS_str;
-    }
-    default:
-        inline_as3("import GLS3D.GLAPI;\n"\
-           "GLAPI.instance.send('glGetString not yet implemented. for ' + %0);" :  : "r"(name));
-    }
-    return (const GLubyte*)GL_default_str;
+    return (const GLubyte *)ret;
 }
 
 extern void glMultMatrixd (const GLdouble *m)
@@ -4101,8 +4034,10 @@ extern GLboolean glIsBuffer(GLuint id)
     if (id == 0)
         return false;
     else {
+        int ret = 0;
         inline_as3("import GLS3D.GLAPI;\n"\
-          "GLAPI.instance.glIsBuffer(%0)\n" :: "r"(id));
+          "%0 = GLAPI.instance.glIsBuffer(%1)\n" :: "r"(ret), "r"(id));
+        return ret;
     }
 }
 
@@ -4554,13 +4489,13 @@ extern void glDrawElements (GLenum mode, GLsizei count, GLenum type, const GLvoi
 extern void glEnableVertexAttribArray(GLuint index)
 {
     attributeStatuses[index] = true;
-    fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray: %u", index);
+    fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray: %u\n", index);
 }
 
 extern void glDisableVertexAttribArray (GLuint index)
 {
     attributeStatuses[index] = false;
-    fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray: %u", index);
+    fprintf(stderr, "[IMPLEMENTED] glEnableVertexAttribArray: %u\n", index);
 }
 
 extern void glGetVertexAttribdv (GLuint index, GLenum pname, GLdouble *params)

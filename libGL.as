@@ -85,6 +85,11 @@ package GLS3D
 
         private var _stage:Stage;
         private var _agalVersion:uint;
+        private var _glLimits:Dictionary = new Dictionary();
+        private var _driverAPI:String;
+        private var _profileIndex:int;
+        private var _playerVersionNumber:Vector.<int> = new <int>[0, 0, 0, 0];
+        private var _glExtensions:String;
         private var overrideR:uint;
         private var overrideG:uint;
         private var overrideB:uint;
@@ -207,7 +212,7 @@ package GLS3D
             return _instance
         }
 
-        public function get agalVersion():uint { return _agalVersion; }
+        final public function get agalVersion():uint { return _agalVersion; }
 
         public function send(value:String):void
         {
@@ -437,32 +442,43 @@ package GLS3D
             }
         }
 
+        public function glGetString(pname:int):String {
+            if (log) log.send("glGetString 0x" + pname.toString(16));
+            switch (pname) {
+                case GL_VENDOR:
+                    return "Adobe";
+                case GL_RENDERER:
+                    return "Stage3D/" + this._driverAPI;
+                case GL_VERSION:
+                    return "2.1";
+                case GL_SHADING_LANGUAGE_VERSION:
+                    if (this._profileIndex > 4)
+                        return "1.50";
+                    else if (this._profileIndex == 4)
+                        return "1.30";
+                    return "1.20";
+                case GL_EXTENSIONS:
+                    return this._glExtensions;
+            }
+            return null;
+        }
+
         public function glGetIntegerv(pname:uint, buf:ByteArray, offset:uint):void
         {
-            if (log) log.send("glGetIntegerv")
-            switch (pname)
-            {
-                case GL_MAX_TEXTURE_SIZE:
-                    buf.position = offset
-                    buf.writeInt(4096)
-                    break
+            if (log) log.send("glGetIntegerv 0x" + pname.toString(16));
+
+            if (pname in _glLimits) {
+                buf.position = offset;
+                buf.writeInt(_glLimits[pname]);
+                return;
+            }
+
+            switch (pname) {
                 case GL_VIEWPORT:
                     buf.position = offset+0; buf.writeInt(0); // x
                     buf.position = offset+4; buf.writeInt(0); // y
                     buf.position = offset+8; buf.writeInt(contextWidth); // width
                     buf.position = offset+12; buf.writeInt(contextHeight); // height
-                    break
-                case GL_MAX_TEXTURE_UNITS:
-                    buf.position = offset + 0;
-                    buf.writeInt(4);
-                    break;
-                case GL_MAX_DRAW_BUFFERS:
-                    buf.position = offset + 0;
-                    buf.writeInt(8);
-                    break;
-                case GL_SAMPLES:
-                    buf.position = offset + 0;
-                    buf.writeInt(4);
                     break;
                 default:
                     buf.position = offset+0; buf.writeInt(0);
@@ -472,7 +488,7 @@ package GLS3D
 
         public function glGetFloatv(pname:uint, buf:ByteArray, offset:uint):void
         {
-            if (log) log.send("glGetFloatv")
+            if (log) log.send("glGetFloatv 0x" + pname.toString(16));
             switch (pname)
             {
                 case GL_MODELVIEW_MATRIX:
@@ -1079,6 +1095,14 @@ package GLS3D
             }
         }
 
+        protected function _createIndexBuffer(size:uint, usage:uint):IndexBuffer3D
+        {
+            if (context.createIndexBuffer.length >= 2)
+                return context.createIndexBuffer.call(null, size / 2, usage == GL_DYNAMIC_DRAW ? "dynamicDraw" : "staticDraw");
+            else
+                return context.createIndexBuffer(size / 2)
+        }
+
         public function glBufferData(target:uint, size:uint, data:ByteArray, dataPtr:uint, usage:uint):void
         {
             if (log2) log2.send("[IMPLEMENTED] glBufferData target: " + target + " size: " + size + "\n")
@@ -1097,16 +1121,22 @@ package GLS3D
                 // In case of index bufer we can calculate number of elements from byte size
                 activeElementArrayBuffer.size = size
                 activeElementArrayBuffer.uploaded = true
-                activeElementArrayBuffer.indexBuffer = context.createIndexBuffer(size / 2)
+                try {
+                    activeElementArrayBuffer.indexBuffer = _createIndexBuffer(size, usage);
+                } catch (e:ArgumentError) {
+                    trace("IndexBuffer3D created failed: ", e.errorID, e.message);
+                    activeElementArrayBuffer.indexBuffer = _createIndexBuffer(size, usage);
+                }
 
                 if (dataPtr != 0) {
                     activeElementArrayBuffer.indexBuffer.uploadFromByteArray(data, dataPtr, 0, size / 2)
                 } else {
                     // In case of NULL data pointer just initialize buffer with zeroes
                     var tmp:ByteArray = new ByteArray()
-                    for (var i:uint = 0; i < size; i++) {
-                        tmp.writeByte(0)
-                    }
+                    /* for (var i:uint = 0; i < size; i++) { */
+                        /* tmp.writeByte(0) */
+                    /* } */
+                    tmp.length = size;
                     activeElementArrayBuffer.indexBuffer.uploadFromByteArray(tmp, 0, 0, size / 2)
                 }
             }
@@ -1898,51 +1928,175 @@ package GLS3D
             executeCommandList(commandLists[id])
         }
 
+        final public function get playerVersionNumber():Vector.<int> {
+            if (this._playerVersionNumber[0] == 0) {
+                var versionNum:String = Capabilities.version.split(' ')[1];
+                var versionNumComponents:Array = versionNum.split(',');
+                this._playerVersionNumber[0] = parseInt(versionNumComponents[0]);
+                this._playerVersionNumber[1] = parseInt(versionNumComponents[1]);
+                this._playerVersionNumber[2] = parseInt(versionNumComponents[2]);
+                this._playerVersionNumber[3] = parseInt(versionNumComponents[3]);
+            }
+            return this._playerVersionNumber;
+        }
+
+        /**
+         * Auto preferred to a suitable version of AGAL.
+         *
+         * @param context A Context3D which created.
+         * @param log A log object API.
+         * @return A unsigned integer describes the version number of AGAL.
+         */
+        protected function preferredAGALVersion(context:Context3D, logObj:Object = null):uint {
+            // Auto selected the most suitable AGAL version.
+            var matches:Array = /^(\w+)\s+\((\w+)\s*(\w+)?\)$/g.exec(context.driverInfo);
+            if (matches && matches.length > 1) {
+                this._driverAPI = matches[1];
+                var extended:Boolean = matches.length > 3 && matches[3] == "Extended";
+                var constrained:Boolean = matches.length > 3 && matches[3] == "Constrained";
+
+                if (matches[2] == "Baseline") {
+                    if (constrained)
+                        this._profileIndex = 1; // Baseline Constrained
+                    else if (!extended)
+                        this._profileIndex = 2; // Baseline
+                    else
+                        this._profileIndex = 3; // Baseline Extended
+                } else if (matches[2] == "Standard") {
+                    if (constrained)
+                        this._profileIndex = 4; // Standard Constrained
+                    else if (!extended)
+                        this._profileIndex = 5; // Standard
+                    else
+                        this._profileIndex = 6; // Standard Extended
+                }
+
+                if (logObj) {
+                    logObj.send("Driver API: " + this._driverAPI + "\n");
+                    logObj.send("Driver Base Profile: " + matches[2] + "\n");
+                    logObj.send("Driver Extended: " + (extended ? "true" : "false"));
+                    logObj.send("Driver Constrained: " + (constrained? "true" : "false"));
+                }
+
+                if (this._profileIndex >= 6) {
+                    /* return this.playerVersionNumber[0] >= 26 ? 4 : 3; */
+                    return 3;
+                } else if (this._profileIndex >= 4) {
+                    return 2;
+                }
+            }
+            // or any doesn't had a HW acc, make basic agal working.
+            return 1;
+        }
+
+        protected function initGLCapabilities() : void {
+            const limits:Dictionary = this._glLimits;
+            const hw_disabled:Boolean = this.context.driverInfo.indexOf("Hw_disabled") != -1;
+            var extensions:String = "";
+
+            limits[GL_MAX_SAMPLES] = 16;
+            limits[GL_MAX_VERTEX_ATTRIBS] = 8;
+            limits[GL_MAX_VARYING_VECTORS] = 8;
+            limits[GL_MAX_VERTEX_UNIFORM_VECTORS] = 128;
+            limits[GL_MAX_FRAGMENT_UNIFORM_VECTORS] = 28;
+            limits[GL_MAX_TEXTURE_UNITS] = 8;
+            limits[GL_MAX_TEXTURE_SIZE] = 1024 * 1024;
+            limits[GL_MAX_COLOR_ATTACHMENTS] = 1;
+            limits[GL_MAX_DRAW_BUFFERS] = 8;
+
+            extensions += "GL_ARB_compatibility ";
+            extensions += "GL_ARB_multitexture ";
+            extensions += "GL_ARB_multisample ";
+            extensions += "GL_EXT_compiled_vertex_array ";
+            extensions += "GL_EXT_texture_env_combine ";
+            extensions += "GL_EXT_framebuffer_object ";
+            extensions += "GL_EXT_framebuffer_blit ";
+            extensions += "GL_ARB_draw_buffers ";
+            extensions += "GL_ARB_seamless_cube_map ";
+            extensions += "ADOBE_AGAL_1 ";
+
+            extensions += "GL_ARB_texture_buffer_object ";
+
+            if (playerVersionNumber[0] >= 13) {
+                extensions += "GL_EXT_framebuffer_multisample ";
+                extensions += "GL_ARB_texture_multisample ";
+                limits[GL_MAX_COLOR_TEXTURE_SAMPLES] = limits[GL_MAX_SAMPLES];
+                limits[GL_MAX_DEPTH_TEXTURE_SAMPLES] = limits[GL_MAX_SAMPLES];
+            }
+
+            if (this._profileIndex > 0) {
+                limits[GL_MAX_TEXTURE_SIZE] = 2048 * 2048;
+            }
+
+            if (this._profileIndex >= 3) {
+                limits[GL_MAX_TEXTURE_SIZE] = 4096 * 4096;
+            }
+
+            if (this._profileIndex >= 4 && _agalVersion >= 2) {
+                limits[GL_MAX_VERTEX_UNIFORM_VECTORS] = 250;
+                limits[GL_MAX_FRAGMENT_UNIFORM_VECTORS] = 64;
+
+                extensions += "ADOBE_AGAL_2 ";
+
+                extensions += "GL_OES_texture_float ";
+                extensions += "GL_OES_texture_half_float ";
+                extensions += "GL_ARB_texture_float ";
+                extensions += "GL_ARB_half_float_pixel ";
+                extensions += "GL_OES_depth_texture ";
+                extensions += "GL_ARB_depth_buffer_float ";
+                extensions += "GL_ARB_texture_non_power_of_two ";
+                extensions += "GL_EXT_texture_filter_anisotropic ";
+                extensions += "GL_OES_element_index_uint ";
+            }
+
+            if (this._profileIndex >= 5) {
+                limits[GL_MAX_COLOR_ATTACHMENTS] = 4;
+                limits[GL_MAX_VARYING_VECTORS] = 10;
+                limits[GL_MAX_TEXTURE_UNITS] = 16;
+            }
+
+            if (this._profileIndex >= 6 && _agalVersion >= 3) {
+                limits[GL_MAX_VERTEX_ATTRIBS] = 16;
+                limits[GL_MAX_FRAGMENT_UNIFORM_VECTORS] = 200;
+
+                extensions += "ADOBE_AGAL_3 ";
+                extensions += "GL_ARB_draw_instanced ";
+                extensions += "GL_ARB_instanced_arrays ";
+
+                if (playerVersionNumber[0] >= 26)
+                    extensions += "ADOBE_AGAL_4 ";
+            }
+
+            limits[GL_MAX_CUBE_MAP_TEXTURE_SIZE] = 1024 * 1024;
+            limits[GL_MAX_VERTEX_UNIFORM_COMPONENTS] = limits[GL_MAX_VERTEX_UNIFORM_VECTORS] * 4;
+            limits[GL_MAX_FRAGMENT_UNIFORM_COMPONENTS] = limits[GL_MAX_FRAGMENT_UNIFORM_VECTORS] * 4;
+            limits[GL_MAX_RENDERBUFFER_SIZE] = limits[GL_MAX_TEXTURE_SIZE];
+
+            this._glExtensions = extensions;
+        }
+
         public function GLAPI(context:Context3D, stage:Stage, log:Object, log2:Object, useAgalVersion:uint):void
         {
             // For the debug console
             _stage = stage;
-            // passing the agal version by external.
-            _agalVersion = useAgalVersion;
 
             this.log = log;
             this.log2 = log2;
 
-            var agalVersionResolved:Boolean = _agalVersion > 0;
-
             var logObj:Object = this.log || this.log2;
 
-            if (!agalVersionResolved) {
-                // Auto selected the most suitable AGAL version.
-                var matches:Array = /^(\w+)\s+\((\w+)\s*(\w+)?\)$/g.exec(context.driverInfo);
-                if (matches && matches.length > 1) {
-                    var extended:Boolean = matches.length > 3 && matches[3] == "Extended";
-                    if (logObj) {
-                        logObj.send("Driver API: " + matches[1] + "\n");
-                        logObj.send("Driver Base Profile: " + matches[2] + "\n");
-                        logObj.send("Driver Extended: " + (extended ? "true" : "false"));
-                    }
-
-                    if (matches[2] == "Standard" && extended) {
-                        _agalVersion = 3;
-                    } else if (matches[2] == "Standard") {
-                        _agalVersion = 2;
-                    } else {
-                        _agalVersion = 1;
-                    }
-
-                    agalVersionResolved = true;
-                } else {
-                    // any doesn't had a HW acc, make basic agal working.
-                    _agalVersion = 1;
-                }
-            }
+            // passing the agal version by external.
+            _agalVersion = preferredAGALVersion(context, logObj); // preferredAGALVersion must be call first for detecting DriverInfo.
+            if (useAgalVersion)
+                _agalVersion = useAgalVersion;
 
             if (logObj) {
-                logObj.send("Selected AGAL version: " + agalVersion + "\n");
+                logObj.send("Selected AGAL version: " + _agalVersion + "\n");
             }
 
             this.context = context;
+
+            this.initGLCapabilities();
 
             agalAssembler = new AGALMiniAssembler();
 
@@ -3008,7 +3162,7 @@ package GLS3D
             var replaced:Boolean = false;
             for (var rk:* in replaceVars) {
                 if (log2) log2.send("Syncing fragment shader's varying " + rk + " into vertex shader's varying " + replaceVars[rk] + "\n");
-                fragSource = fragSource.replace(rk, replaceVars[rk]);
+                fragSource = fragSource.replace(new RegExp(rk, 'g'), replaceVars[rk]);
                 replaced = true;
             }
 
@@ -3145,8 +3299,8 @@ package GLS3D
                 context.setProgramConstantsFromVector(Context3DProgramType.FRAGMENT, uint(constantName.substr(2)), Vector.<Number>(consts[constantName]))
             }
 
-            context.setTextureAt(1, null)
-            context.setTextureAt(2, null)
+            /* context.setTextureAt(1, null) */
+            /* context.setTextureAt(2, null) */
         }
 
         private function stencilOpToContext3DStencilAction(op:uint):String
@@ -3345,6 +3499,7 @@ package GLS3D
 
             if (!instance.texture)
             {
+                // TODO: createTexture with correct format.
                 //trace("Compressed is " + compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA)
                 instance.texture =
                     context.createTexture(width, height, compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA, dataOff == 0 ? true : false)
@@ -3461,7 +3616,7 @@ class TextureInstance
     private var _dirty:Boolean;
 
     private var _texture:Texture
-    public function get texture():Texture { return _texture; }
+    final public function get texture():Texture { return _texture; }
     public function set texture(value:Texture):void {
         if (_texture == value) return;
         _texture = value;
@@ -3469,7 +3624,7 @@ class TextureInstance
     }
 
     private var _cubeTexture:CubeTexture
-    public function get cubeTexture():CubeTexture { return _cubeTexture; }
+    final public function get cubeTexture():CubeTexture { return _cubeTexture; }
     public function set cubeTexture(value:CubeTexture):void {
         if (_cubeTexture == value) return;
         _cubeTexture = value;
@@ -3477,7 +3632,7 @@ class TextureInstance
     }
 
     private var _mipLevels:uint
-    public function get mipLevels():uint { return _mipLevels; }
+    final public function get mipLevels():uint { return _mipLevels; }
     public function set mipLevels(value:uint):void {
         if (_mipLevels == value) return;
         _mipLevels = value;
@@ -3485,7 +3640,7 @@ class TextureInstance
     }
 
     private var _params:TextureParams = new TextureParams()
-    public function get params():TextureParams { return _params; }
+    final public function get params():TextureParams { return _params; }
     public function set params(value:TextureParams):void {
         if (value == _params) return;
         _params = value;
@@ -3496,7 +3651,7 @@ class TextureInstance
     public var texID:uint
 
     private var _cacheKey:String;
-    public function get key():String {
+    final public function get key():String {
         if (!_cacheKey || _dirty) {
             _cacheKey = '';
             if (!_params)
@@ -4008,3 +4163,5 @@ class VertexBufferPool
         return output
     }
 }
+
+// vi:ft=as3 ts=4 sw=4 expandtab tw=120

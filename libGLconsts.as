@@ -1,3 +1,8 @@
+/* MISC */
+public static const GL_VENDOR:uint = 0x1F00
+public static const GL_RENDERER:uint = 0x1F01
+public static const GL_VERSION:uint = 0x1F02
+public static const GL_EXTENSIONS:uint = 0x1F03
 
 /* CullFaceMode */
 public static const GL_FRONT:uint =             0x0404
@@ -63,6 +68,7 @@ public static const GL_TEXTURE_CUBE_MAP_POSITIVE_Y:uint    = 0x8517
 public static const GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:uint    = 0x8518
 public static const GL_TEXTURE_CUBE_MAP_POSITIVE_Z:uint    = 0x8519
 public static const GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:uint    = 0x851A
+public static const GL_MAX_CUBE_MAP_TEXTURE_SIZE:uint =  0x851C
 
 public static const GL_ARRAY_BUFFER:uint            = 0x8892
 public static const GL_ELEMENT_ARRAY_BUFFER:uint    = 0x8893
@@ -74,13 +80,20 @@ public static const GL_DYNAMIC_DRAW:uint  = 0x88E8
 /* Shaders */
 public static const GL_FRAGMENT_SHADER:uint  					= 0x8B30
 public static const GL_VERTEX_SHADER:uint						= 0x8B31
+public static const GL_MAX_SAMPLES:uint                         = 0x8D58;
+public static const GL_MAX_RENDERBUFFER_SIZE:uint               = 0x84E8;
+public static const GL_MAX_COLOR_ATTACHMENTS:uint               = 0x8CDF;
+public static const GL_MAX_COLOR_TEXTURE_SAMPLES:uint           = 0x910E;
+public static const GL_MAX_DEPTH_TEXTURE_SAMPLES:uint           = 0x910F;
 public static const GL_MAX_VERTEX_ATTRIBS:uint					= 0x8869
 public static const GL_MAX_VERTEX_UNIFORM_VECTORS:uint			= 0x8DFB
+public static const GL_MAX_VERTEX_UNIFORM_COMPONENTS:uint		= 0x8D4A
 public static const GL_MAX_VARYING_VECTORS:uint					= 0x8DFC
 public static const GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:uint    = 0x8B4D
 public static const GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS:uint		= 0x8B4C
 public static const GL_MAX_TEXTURE_IMAGE_UNITS:uint				= 0x8872
 public static const GL_MAX_FRAGMENT_UNIFORM_VECTORS:uint		= 0x8DFD
+public static const GL_MAX_FRAGMENT_UNIFORM_COMPONENTS:uint		= 0x8B49
 public static const GL_SHADER_TYPE:uint							= 0x8B4F
 public static const GL_DELETE_STATUS:uint						= 0x8B80
 public static const GL_LINK_STATUS:uint							= 0x8B82

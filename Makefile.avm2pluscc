@@ -27,11 +27,11 @@ compile:
 	@mv libGL.abc install/usr/lib/
 
 	@echo "Compiling libGL.cpp"
-	$(CXX) -fno-exceptions -O2 -c -Iinstall/usr/include/ libGL.cpp
+	$(CXX) -fno-exceptions -fno-rtti -Os -c -Iinstall/usr/include/ libGL.cpp
 	$(AR) crus install/usr/lib/libGL.a install/usr/lib/libGL.abc libGL.o
 	@echo "Compiling mipmap.c quad.c"
-	$(CC) -fno-exceptions -O2 -c -Iinstall/usr/include/ -Linstall/usr/lib mipmap.c
-	$(CC) -fno-exceptions -O2 -c -Iinstall/usr/include/ -Linstall/usr/lib quad.c
+	$(CC) -fno-exceptions -Os -c -Iinstall/usr/include/ -Linstall/usr/lib mipmap.c
+	$(CC) -fno-exceptions -Os -c -Iinstall/usr/include/ -Linstall/usr/lib quad.c
 	$(AR) crus install/usr/lib/libGLU.a mipmap.o quad.o
 
 install::
@@ -39,8 +39,8 @@ install::
 	@mkdir -p $(PREFIX)/usr/include/SDL
 	@mkdir -p $(PREFIX)/usr/lib
 	@rm -rf install/usr/lib/*.abc
-	cp -rf install/usr/include/* $(PREFIX)/usr/include
 	cp -rf install/usr/lib/* $(PREFIX)/usr/lib
+	cp -rf install/usr/include/* $(PREFIX)/usr/include
 
 all: compile install
 

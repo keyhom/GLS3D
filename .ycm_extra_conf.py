@@ -15,7 +15,7 @@ if os.name == 'posix':
           '-x', 'c++',
           '-I', '.'
         ]
-        if os.environ.has_key('FLASCC_ROOT'):
+        if os.environ.get('FLASCC_ROOT'):
             flags.append('-isystem')
             flags.append(os.popen('cygpath -p "%s"' % os.environ.get('FLASCC_ROOT') +
                 '/sdk/usr/include').read().replace('\n', ''))
@@ -38,7 +38,7 @@ else:
 #        '-isystem', 'C:/Program Files (x86)/Microsoft Visual Studio 11.0/VC/include',
 #        '-isystem', 'C:/Program Files (x86)/Microsoft Visual Studio 11.0/VC/atlmfc/include'
     ]
-    if os.environ.has_key('FLASCC_ROOT'):
+    if os.environ.get('FLASCC_ROOT'):
         flags.append('-isystem')
         flags.append(os.environ.get('FLASCC_ROOT') + '/sdk/usr/include')
     compilation_database_folder = ''

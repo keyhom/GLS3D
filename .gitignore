@@ -13,3 +13,4 @@
 
 .DS_Store
 *.pyc
+install/usr/lib/libGL.a*
