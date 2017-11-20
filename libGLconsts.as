@@ -193,7 +193,11 @@ public static const GL_SEPARATE_SPECULAR_COLOR   :uint = 0x81FA
 public static const GL_MODULATE:uint = 0x2100
 public static const GL_NEAREST:uint = 0x2600
 public static const GL_LINEAR:uint = 0x2601
-public static const GL_NEAREST_MIPMAP_LINEAR:uint = 0x2702
+public static const GL_NEAREST_MIPMAP_NEAREST:uint  = 0x2700
+public static const GL_NEAREST_MIPMAP_LINEAR:uint   = 0x2702
+public static const GL_LINEAR_MIPMAP_NEAREST:uint   = 0x2701
+public static const GL_LINEAR_MIPMAP_LINEAR:uint    = 0x2703
+
 public static const GL_TEXTURE_ENV_MODE:uint = 0x2200
 
 /* polygon_offset */

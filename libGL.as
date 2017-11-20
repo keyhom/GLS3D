@@ -111,6 +111,7 @@ package GLS3D
         private var activeTexture:TextureInstance
         private var textures:Dictionary = new Dictionary()
         private var texID:uint = 1 // so we have 0 as non-valid id
+        private var NULL_TEXTURE:TextureBase = null;
 
         private var activeFramebuffer:FramebufferInstance
         private var framebuffers:Dictionary = new Dictionary()
@@ -2139,6 +2140,8 @@ package GLS3D
                 cubeVertexData.push(v2[0], v2[1], v2[2], 1, 1, 1, 1, 0, 0, 0, 0, 0);
                 cubeVertexData.push(v3[0], v3[1], v3[2], 1, 1, 1, 1, 0, 0, 0, 0, 0);
             }
+
+            NULL_TEXTURE = this.context.createTexture(1, 1, Context3DTextureFormat.BGRA, false);
         }
 
         public function glClear(mask:uint):void
@@ -2571,76 +2574,76 @@ package GLS3D
             }
         }
 
-        public function glTexParameterf(target:uint, pname:uint, param:Number):void
-        {
-            if (log) log.send( "[IMPLEMENTED] glTexParameteri " + target + " 0x" + pname.toString(16) + " 0x" + param.toString(16) + "\n")
+        public function glTexParameterf(target:uint, pname:uint, param:Number):void {
+            if (log) log.send( "[IMPLEMENTED] glTexParameterf " + target + " 0x" + pname.toString(16) + " 0x" +
+                    param.toString(16) + "\n");
 
-            if (!activeTexture)
-            {
-                if (log) log.send("[WARNING] Calling glTexParameteri with no active texture")
-                return
+            if (!activeTexture) {
+                if (log) log.send("[WARNING] Calling glTexParameterf with no active texture");
+                return;
             }
 
-            var textureParams:TextureParams = activeTexture.params
+            var textureParams:TextureParams = activeTexture.params;
 
-            switch (pname)
-            {
+            switch (pname) {
                 case GL_TEXTURE_MIN_LOD:
-                    textureParams.GL_TEXTURE_MIN_LOD = param
-                break
+                    textureParams.GL_TEXTURE_MIN_LOD = param;
+                    if (log) log.send("Setting GL_TEXTURE_MIN_LOD to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_MAX_LOD:
-                    textureParams.GL_TEXTURE_MAX_LOD = param
-                break
+                    textureParams.GL_TEXTURE_MAX_LOD = param;
+                    if (log) log.send("Setting GL_TEXTURE_MAX_LOD to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_MIN_FILTER:
-                    textureParams.GL_TEXTURE_MIN_FILTER = param
-                break
+                    textureParams.GL_TEXTURE_MIN_FILTER = param;
+                    if (log) log.send("Setting GL_TEXTURE_MIN_FILTER to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_MAG_FILTER:
-                    textureParams.GL_TEXTURE_MAG_FILTER = param
-                break
-
+                    textureParams.GL_TEXTURE_MAG_FILTER = param;
+                    if (log) log.send("Setting GL_TEXTURE_MAG_FILTER to: 0x" + param.toString(16));
+                    break;
                 default:
-                    if (log) log.send( "[NOTE] Unsupported pname 0x" + pname.toString(16) + " for glTexParameterf" + (target == GL_TEXTURE_2D ? "(2D)" : "(Cube)"))
+                    if (log) log.send( "[NOTE] Unsupported pname 0x" + pname.toString(16) + " for glTexParameterf" +
+                            (target == GL_TEXTURE_2D ? "(2D)" : "(Cube)"));
             }
         }
 
         public function glTexParameteri(target:uint, pname:uint, param:int):void
         {
-            if (log) log.send( "[IMPLEMENTED] glTexParameteri " + target + " 0x" + pname.toString(16) + " 0x" + param.toString(16) + "\n")
+            if (log) log.send( "[IMPLEMENTED] glTexParameteri " + target + " 0x" + pname.toString(16) + " 0x" +
+                    param.toString(16) + "\n");
 
-            if (!activeTexture)
-            {
-                if (log) log.send("[WARNING] Calling glTexParameteri with no active texture")
-                return
+            if (!activeTexture) {
+                if (log) log.send("[WARNING] Calling glTexParameteri with no active texture");
+                return;
             }
 
-            var textureParams:TextureParams = activeTexture.params
+            var textureParams:TextureParams = activeTexture.params;
 
-            switch (pname)
-            {
+            switch (pname) {
                 case GL_TEXTURE_MAX_ANISOTROPY_EXT:
-                    textureParams.GL_TEXTURE_MAX_ANISOTROPY_EXT = param
-                break
-
+                    textureParams.GL_TEXTURE_MAX_ANISOTROPY_EXT = param;
+                    if (log) log.send("Setting GL_TEXTURE_MAX_ANISOTROPY_EXT to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_MAG_FILTER:
-                    textureParams.GL_TEXTURE_MAG_FILTER = param
-                break
-
+                    textureParams.GL_TEXTURE_MAG_FILTER = param;
+                    if (log) log.send("Setting GL_TEXTURE_MAG_FILTER to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_MIN_FILTER:
-                    textureParams.GL_TEXTURE_MIN_FILTER = param
-                break
-
+                    textureParams.GL_TEXTURE_MIN_FILTER = param;
+                    if (log) log.send("Setting GL_TEXTURE_MIN_FILTER to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_WRAP_S:
-                    textureParams.GL_TEXTURE_WRAP_S = param
-                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16))
-                break
-
+                    textureParams.GL_TEXTURE_WRAP_S = param;
+                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16));
+                    break;
                 case GL_TEXTURE_WRAP_T:
-                    textureParams.GL_TEXTURE_WRAP_T = param
-                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16))
-                break
-
+                    textureParams.GL_TEXTURE_WRAP_T = param;
+                    if (log) log.send("Setting GL_TEXTURE_WRAP_S to: 0x" + param.toString(16));
+                    break;
                 default:
-                    if (log) log.send( "[NOTE] Unsupported pname 0x" + pname.toString(16) + " for glTexParameteri" + (target == GL_TEXTURE_2D ? "(2D)" : "(Cube)"))
+                    if (log) log.send( "[NOTE] Unsupported pname 0x" + pname.toString(16) + " for glTexParameteri" +
+                            (target == GL_TEXTURE_2D ? "(2D)" : "(Cube)"));
             }
         }
 
@@ -2658,6 +2661,9 @@ package GLS3D
 
         private function convertPixelDataToBGRA(width:int, height:int, srcFormat:uint, src:ByteArray, srcOffset:uint):ByteArray
         {
+            if (log)
+                log.send("convertPixelDataToBGRA: w " + width + " h " + height + " format 0x" + srcFormat.toString(16));
+
             //var srcBytesPerPixel:int
             var pixelCount:int = width * height
             var dst:ByteArray = new ByteArray()
@@ -2719,7 +2725,8 @@ package GLS3D
                       PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " + ptr.toString(16) + "\n")
 
             if(activeTexture && activeTexture.texture) {
-                activeTexture.texture.dispose()
+                if (activeTexture.texture != NULL_TEXTURE)
+                    activeTexture.texture.dispose()
                 textures[textureSamplerIDs[activeTextureUnit]] = null
                 glBindTexture(target, textureSamplerIDs[activeTextureUnit])
             }
@@ -2727,54 +2734,47 @@ package GLS3D
             glTexImage2D(target, level, format, width, height, 0, format, imgType, ptr, ram)
         }
 
-        public function glTexImage2D(target:uint, level:int, intFormat:int, width:int, height:int, border:int, format:uint, imgType:uint, ptr:uint, ram:ByteArray):void
-        {
-            /* if (width == 1 && height == 1) { */
-                /* if (log2) log2.send("[IMPLEMENTED] glTexImage2D does not support 1x1 textures - No-Op"); */
-                /* return; */
-            /* } */
+        public function glTexImage2D(target:uint, level:int, intFormat:int, width:int, height:int, border:int, format:uint, imgType:uint, ptr:uint, ram:ByteArray):void {
+            // if (width == 1 && height == 1) {
+                // if (log2) log2.send("[IMPLEMENTED] glTexImage2D does not support 1x1 textures - No-Op");
+                // return;
+            // }
 
-            if (log2) log2.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] + " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " +
-                      PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " + imgType.toString(16) + "\n")
+            if (log2)
+                log2.send( "[IMPLEMENTED] glTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] +
+                        " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " +
+                        PIXEL_FORMAT[format - GL_COLOR_INDEX] + " " + pixelTypeToString(imgType) + " " +
+                        imgType.toString(16) + "\n");
 
-            if (intFormat == GL_LUMINANCE)
-            {
+            if (intFormat == GL_LUMINANCE) {
                 // Unsupported. TODO - Squelch all PF_G8 textures.
                 // width = width/2
                 // height = height/2
             }
 
             if (width == 0 || height == 0)
-                return
+                return;
 
-            // Context3D only supports BGRA and COMPRESSED formats
-            var data:ByteArray
-            var dataOffset:uint
-            if (format != GL_BGRA)
-            {
-                if (log2) log2.send( "[IMPLEMENTED] glTexImage2D: Converting to BGRA" )
+            var data:ByteArray;
+            var dataOffset:uint;
+            // XXX: More format to handle.
+            if (format != GL_BGRA) { // BGRA_PACKED, BGR_PACKED, etc
+                if (log2) log2.send( "[IMPLEMENTED] glTexImage2D: Converting to BGRA" );
                 // Convert the texture format
-                data = convertPixelDataToBGRA(width, height, format, ram, ptr)
-                dataOffset = 0
-            }
-            else
-            {
-                data = ram
-                dataOffset = ptr
+                data = convertPixelDataToBGRA(width, height, format, ram, ptr);
+                dataOffset = 0;
+            } else {
+                data = ram;
+                dataOffset = ptr;
             }
 
             // Create appropriate texture type and upload data.
-            if (target == GL_TEXTURE_2D)
-            {
-                create2DTexture(width, height, level, data, dataOffset)
-            }
-            else if (target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z)
-            {
-                createCubeTexture(width, target, level, data, dataOffset)
-            }
-            else
-            {
-                if (log2) log2.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D")
+            if (target == GL_TEXTURE_2D) {
+                create2DTexture(width, height, level, data, dataOffset);
+            } else if (target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z) {
+                createCubeTexture(width, target, level, data, dataOffset);
+            } else {
+                if (log2) log2.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D");
             }
         }
 
@@ -2892,16 +2892,16 @@ package GLS3D
             // NOTE: comment below lines and moves to the glLinkProgram, there's
             // some varying may be need to sync with.
 
-            /* if (source) { */
-                /* if (shaderInstance.type == GL_VERTEX_SHADER) */
-                    /* agalAssembler.assemble(Context3DProgramType.VERTEX, source, */
-                            /* _agalVersion); */
-                /* else */
-                    /* agalAssembler.assemble(Context3DProgramType.FRAGMENT, */
-                            /* source, _agalVersion); */
-            /* } */
+            // if (source) {
+                // if (shaderInstance.type == GL_VERTEX_SHADER)
+                    // agalAssembler.assemble(Context3DProgramType.VERTEX, source,
+                            // _agalVersion);
+                // else
+                    // agalAssembler.assemble(Context3DProgramType.FRAGMENT,
+                            // source, _agalVersion);
+            // }
 
-            /* shaderInstance.agalcode = agalAssembler.agalcode; */
+            // shaderInstance.agalcode = agalAssembler.agalcode;
         }
 
         public function glCompileShader(shader:uint):void
@@ -3184,6 +3184,51 @@ package GLS3D
             }
         }
 
+        protected function setSamplerState(sampler:uint, texture:TextureInstance):void {
+            if ('setSamplerStateAt' in context) {
+                // Context3D.setSamplerStateAt(sampler:int, wrap:String, filter:String, mipFilter:String)
+                var func:Function = context['setSamplerStateAt'] as Function;
+                var wrap:String = "clamp";
+                var filter:String = "nearest";
+                var mipFilter:String = "mipnone";
+
+                if (texture.params.GL_TEXTURE_WRAP_S == GL_REPEAT) {
+                    wrap = "repeat";
+                } else if (texture.params.GL_TEXTURE_WRAP_S == GL_CLAMP) {
+                    wrap = "clamp";
+                }
+
+                if (texture.params.GL_TEXTURE_WRAP_S != texture.params.GL_TEXTURE_WRAP_T) {
+                    wrap += "_u_";
+                    if (texture.params.GL_TEXTURE_WRAP_T == GL_REPEAT) {
+                        wrap += "repeat_v";
+                    } else {
+                        wrap += "clamp_v";
+                    }
+                }
+
+                if (texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR ||
+                    texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_LINEAR ||
+                    texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_NEAREST) {
+                    filter = "linear";
+                }
+
+                if (texture.mipLevels > 1) {
+                    if (texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_LINEAR ||
+                        texture.params.GL_TEXTURE_MIN_FILTER == GL_NEAREST_MIPMAP_LINEAR) {
+                        mipFilter = "miplinear";
+                    } else {
+                        mipFilter = "mipnearest";
+                    }
+                }
+
+                func(sampler, wrap, filter, mipFilter);
+            } else {
+                if (log2)
+                    log2.send("[WARNING] Your driver profile doesn't support setting sampler state ...");
+            }
+        }
+
         public function glGetUniformLocation(program:uint, name:String):uint
         {
             variableID++
@@ -3230,14 +3275,21 @@ package GLS3D
 
             if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) resolved " + handle + " into " + variableHandle.name + " register\n")
 
-            if (variableHandle.name.substr(0, 2) == "fs")
-            {
-                var texture:TextureInstance = textureSamplers[ uint(v0) ]
-                if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to " + uint(v0) +
-                " which resolves into " + texture.texture + "\n")
-                context.setTextureAt(variableHandle.number, texture.texture)
+            if (variableHandle.name.substr(0, 2) == "fs") {
+                var texture:TextureInstance = textureSamplers[ uint(v0) ];
+                if (log2) log2.send( "[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to "
+                        + uint(v0) + " which resolves into " + texture.texture +
+                        "\n");
+                if (variableHandle.number != uint(v0)) {
+                    if (log2)
+                        log2.send("[WARNING] variable handler number is " + variableHandle.number + ", but sampler id is: " + uint(v0));
+                }
 
-                return
+                context.setTextureAt(variableHandle.number, texture.texture);
+
+                // Sets the sampler state here.
+                setSamplerState(variableHandle.number, texture);
+                return;
             }
 
             var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX : Context3DProgramType.FRAGMENT
@@ -3488,23 +3540,19 @@ package GLS3D
         //  Functions
         // ----------------------------------------------------------------------
 
-        protected function create2DTexture(width:int, height:int, level:int, data:ByteArray, dataOff:uint, compressed:Boolean=false, compressedUpload:Boolean=false):void
+        protected function create2DTexture(width:int, height:int, level:int, data:ByteArray, dataOff:uint, format="bgra", compressedUpload:Boolean=false):void
         {
             var instance:TextureInstance = activeTexture
-            if (!instance)
-            {
+            if (!instance) {
                 if (log) log.send( "[NOTE] No previously bound texture for glTexImage2D (2D)")
                 return
             }
 
-            if (!instance.texture)
-            {
+            if (!instance.texture) {
                 // TODO: createTexture with correct format.
                 //trace("Compressed is " + compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA)
-                instance.texture =
-                    context.createTexture(width, height, compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA, dataOff == 0 ? true : false)
-
-                textureSamplers[activeTextureUnit] = instance
+                instance.texture = context.createTexture(width, height, format, dataOff == 0 ?  true : false, level);
+                textureSamplers[activeTextureUnit] = instance;
             }
 
             if(level >= instance.mipLevels) {
@@ -3514,28 +3562,26 @@ package GLS3D
             }
 
             // FIXME (egeorgie) - we need a boolean param instead?
-            //if (dataOff != 0)
+            // if (dataOff != 0)
             {
-                if (compressedUpload)
-                    instance.texture.uploadCompressedTextureFromByteArray(data, dataOff)
-                else
-                {
-                    /* if (log) log.send("[DEBUG] texture.uploadFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height); */
-                    /* if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]") */
-                    instance.texture.uploadFromByteArray(data, dataOff, level)
+                if (compressedUpload) {
+                    instance.texture.uploadCompressedTextureFromByteArray(data, dataOff);
+                } else {
+                    // if (log) log.send("[DEBUG] texture.uploadFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height);
+                    // if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]")
+                    instance.texture.uploadFromByteArray(data, dataOff, level);
                 }
             }
         }
 
-        protected function createCubeTexture(width:int, target:uint, level:int, data:ByteArray, dataOff:uint, compressed:Boolean=false, compressedUpload:Boolean=false):void
+        protected function createCubeTexture(width:int, target:uint, level:int, data:ByteArray, dataOff:uint, format="bgra", compressedUpload:Boolean=false):void
         {
             var instance:TextureInstance = activeTexture
             if (instance)
             {
                 if (!instance.cubeTexture)
                 {
-                    instance.cubeTexture =
-                        context.createCubeTexture(width, compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA, false)
+                    instance.cubeTexture = context.createCubeTexture(width, format, false);
 
                     textureSamplers[activeTextureUnit] = instance
                 }
