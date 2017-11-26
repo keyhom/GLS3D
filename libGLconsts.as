@@ -121,7 +121,13 @@ public static const CDATA_MATRIX4x4:uint     = 16
 
 public static const GL_LIGHTING_BIT:uint =                   0x00000040
 
-public static const GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG:uint = 0x83F0
+// public static const GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG:uint = 0x83F0
+
+/* GL_EXT_texture_compression_s3tc */
+public static const GL_COMPRESSED_RGB_S3TC_DXT1_EXT :uint = 0x83F0
+public static const GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:uint = 0x83F1
+public static const GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:uint = 0x83F2
+public static const GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:uint = 0x83F3
 
 
 /* StencilOp */

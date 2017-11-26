@@ -2758,6 +2758,24 @@ package GLS3D
             var data:ByteArray;
             var dataOffset:uint;
             // XXX: More format to handle.
+            // format avaiables:
+            // intFormat                format                  imgType
+            // GL_ALPHA8                GL_ALPHA                GL_UNSIGNED_BYTE
+            // GL_LUMINANCE8            GL_LUMINANCE            GL_UNSIGNED_BYTE
+            // GL_LUMINANCE8_ALPHA      GL_LUMINANCE_ALPHA      GL_UNSIGNED_BYTE
+            // GL_RGBA4                 GL_LUMINANCE_ALPHA      GL_UNSIGNED_BYTE
+            // GL_BGR                   GL_BGR                  GL_UNSIGNED_BYTE
+            // GL_RGB8                  GL_RGB                  GL_UNSIGNED_BYTE
+            // GL_RGB8                  GL_RGB                  GL_UNSIGNED_SHORT_5_6_5
+            // GL_RGB5_A1               GL_RGBA                 GL_UNSIGNED_SHORT_5_5_5_1
+            // GL_RGBA8                 GL_RGBA                 GL_UNSIGNED_BYTE
+            // GL_RGBA8                 GL_RGBA                 GL_UNSIGNED_INT_8_8_8_8
+            // GL_RGBA8                 GL_BGRA                 GL_UNSIGNED_INT_8_8_8_8
+            // GL_BGRA                  GL_BGRA                 GL_UNSIGNED_BYTE
+            // GL_DEPTH_COMPONENT       GL_DEPTH_COMPONENT      GL_UNSIGNED_BYTE
+            // GL_DEPTH_COMPONENT16     GL_DEPTH_COMPONENT      GL_UNSIGNED_SHORT
+            // GL_DEPTH_COMPONENT24     GL_DEPTH_COMPONENT      GL_UNSIGNED_INT
+
             if (format != GL_BGRA) { // BGRA_PACKED, BGR_PACKED, etc
                 if (log2) log2.send( "[IMPLEMENTED] glTexImage2D: Converting to BGRA" );
                 // Convert the texture format
@@ -2780,11 +2798,36 @@ package GLS3D
 
         public function glCompressedTexImage2D(target:uint, level:int, intFormat:uint, width:int, height:int, border:int, imageSize:int, ptr:uint, ram:ByteArray):void
         {
+            if (log2)
+                log2.send( "[IMPLEMENTED] glCompressedTexImage2D " + target + " texid: " + textureSamplerIDs[activeTextureUnit] +
+                        " l:" + level + " " + intFormat + " " + width + "x" + height + " b:" + border + " " + imageSize + " " + ptr );
             // Create appropriate texture type and upload data.
+            // ATF format:
+            //      RGBA
+            //      COMPRESSED
+            //      COMPRESSED_ALPHA
+            var format:String;
+            switch (intFormat) {
+                case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
+                    format = Context3DTextureFormat.COMPRESSED;
+                    break;
+                case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+                case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+                case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+                    format = "compressedAlpha"; // explicit string for compatibility.
+                    break;
+                default:
+                    if (log)
+                        log.send("[ERROR] Unsupported format describes as ATF data.");
+                case GL_BGRA:
+                    format = Context3DTextureFormat.BGRA;
+                    break;
+            }
+
             if (target == GL_TEXTURE_2D)
-                create2DTexture(width, height, level, ram, ptr, (intFormat == 2 || intFormat == 3), true)
+                create2DTexture(width, height, level, ram, ptr, imageSize, format, true)
             else if (target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z)
-                createCubeTexture(width, target, level, ram, ptr, (intFormat == 2 || intFormat == 3), true)
+                createCubeTexture(width, target, level, ram, ptr, imageSize, format, true)
             else {
                 if (log) log.send( "[NOTE] Unsupported texture type " + target + " for glCompressedTexImage2D")
             }
@@ -3540,17 +3583,18 @@ package GLS3D
         //  Functions
         // ----------------------------------------------------------------------
 
-        protected function create2DTexture(width:int, height:int, level:int, data:ByteArray, dataOff:uint, format="bgra", compressedUpload:Boolean=false):void
+        protected function create2DTexture(width:int, height:int, level:int, data:ByteArray, dataOff:uint, dataLen:int = -1, format="bgra", compressedUpload:Boolean=false):void
         {
             var instance:TextureInstance = activeTexture
             if (!instance) {
-                if (log) log.send( "[NOTE] No previously bound texture for glTexImage2D (2D)")
-                return
+                if (log) log.send( "[NOTE] No previously bound texture for glTexImage2D (2D)");
+                return;
             }
 
+            if (log2)
+                log2.send("[NOTE] create 2D texture: WxH " + width + "x" + height + " l:" + level + " f:" + format + " c:" + compressedUpload);
+
             if (!instance.texture) {
-                // TODO: createTexture with correct format.
-                //trace("Compressed is " + compressed ? Context3DTextureFormat.COMPRESSED : Context3DTextureFormat.BGRA)
                 instance.texture = context.createTexture(width, height, format, dataOff == 0 ?  true : false, level);
                 textureSamplers[activeTextureUnit] = instance;
             }
@@ -3564,17 +3608,30 @@ package GLS3D
             // FIXME (egeorgie) - we need a boolean param instead?
             // if (dataOff != 0)
             {
+                var bytes:ByteArray = null;
+                // if (dataLen > -1) {
+                    // bytes = new ByteArray;
+                    // bytes.endian = Endian.LITTLE_ENDIAN;
+                    // bytes.writeBytes(data, dataOff, dataLen);
+                    // bytes.position = 0;
+                    // dataOff = 0;
+                // } else {
+                    bytes = data;
+                // }
+
                 if (compressedUpload) {
-                    instance.texture.uploadCompressedTextureFromByteArray(data, dataOff);
+                    if (log) log.send("[DEBUG] texture.uploadCompressedTextureFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height);
+                    if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]")
+                    instance.texture.uploadCompressedTextureFromByteArray(bytes, dataOff);
                 } else {
-                    // if (log) log.send("[DEBUG] texture.uploadFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height);
-                    // if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]")
-                    instance.texture.uploadFromByteArray(data, dataOff, level);
+                    if (log) log.send("[DEBUG] texture.uploadFromByteArray(data, dataOff(" + dataOff + "), level(" + level + ") width: " + width + ", height: " + height);
+                    if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]")
+                    instance.texture.uploadFromByteArray(bytes, dataOff, level);
                 }
             }
         }
 
-        protected function createCubeTexture(width:int, target:uint, level:int, data:ByteArray, dataOff:uint, format="bgra", compressedUpload:Boolean=false):void
+        protected function createCubeTexture(width:int, target:uint, level:int, data:ByteArray, dataOff:uint, dataLen:int = -1, format="bgra", compressedUpload:Boolean=false):void
         {
             var instance:TextureInstance = activeTexture
             if (instance)
