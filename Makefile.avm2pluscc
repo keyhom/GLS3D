@@ -23,8 +23,9 @@ compile:
 	-import $(SYS_CACHE)/C_Run.abc \
 	-import $(SYS_CACHE)/CModule.abc \
 	-in src/com/adobe/utils/v3/AGALMiniAssembler.as \
-	libGL.as
-	@mv libGL.abc install/usr/lib/
+	-config CONFIG::debug=true \
+	src/GLS3D/GLAPI.as
+	@mv src/GLS3D/GLAPI.abc install/usr/lib/libGL.abc
 
 	@echo "Compiling libGL.cpp"
 	$(CXX) -fno-exceptions -fno-rtti -Os -c -Iinstall/usr/include/ libGL.cpp

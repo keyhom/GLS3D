@@ -36,7 +36,7 @@ compile: check
 	-import $(call nativepath,$(FLASCC)/usr/lib/C_Run.abc) \
 	-import $(call nativepath,$(FLASCC)/usr/lib/CModule.abc) \
 	-in src/com/adobe/utils/v3/AGALMiniAssembler.as \
-	libGL.as
+	src/GLS3D/libGL.as
 	@mv libGL.abc install/usr/lib/
 
 	# -in src/com/adobe/utils/extended/AGALMiniAssembler.as \

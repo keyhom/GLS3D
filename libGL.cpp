@@ -716,7 +716,7 @@ extern void glGenTextures (GLsizei n, GLuint *textures)
     AS3_GetScalarFromVar(firstIndex, result);
 
 
-    fprintf(stderr, "[IMPLEMENTED] glGenTextures: asked to generate %d textures, generated with id = %d ++\n", n, firstIndex);
+    // fprintf(stderr, "[IMPLEMENTED] glGenTextures: asked to generate %d textures, generated with id = %d ++\n", n, firstIndex);
 
     for (i = 0; i < n; i++) {
         textures[i] = firstIndex + i;
@@ -1166,7 +1166,7 @@ extern const GLubyte * glGetString (GLenum name)
     GLubyte *ret;
     inline_as3("import GLS3D.GLAPI;\n"
        "var str:String = GLAPI.instance.glGetString(%1);\n"
-       "trace('glGetString ###', str);\n"
+       // "trace('glGetString ###', str);\n"
        "%0 = CModule.mallocString(str);\n"
        : "=r"(ret)
        : "r"(name));
