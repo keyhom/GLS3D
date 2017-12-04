@@ -3279,6 +3279,36 @@ public class GLAPI {
             this._indexBuffer.uploadFromVector(indexValues, 0, indexCount);
         }
 
+        // Defered to set program.
+        const programInstance:ProgramInstance = this._activeProgramInstance;
+        if ( programInstance && !programInstance.uploaded ) {
+            this._agalAssembler.assemble(Context3DProgramType.VERTEX, programInstance.vertexShader.agalasm,
+                    this._agalVersion);
+            programInstance.vertexShader.agalcode = this._agalAssembler.agalcode;
+
+            this._agalAssembler.assemble(Context3DProgramType.FRAGMENT, programInstance.fragmentShader.agalasm,
+                    this._agalVersion);
+            programInstance.fragmentShader.agalcode = this._agalAssembler.agalcode;
+
+            try {
+                programInstance.program.upload(programInstance.vertexShader.agalcode,
+                        programInstance.fragmentShader.agalcode);
+
+                programInstance.uploaded = true;
+            }
+            catch (e:Error) {
+                CONFIG::debug {
+                    log2 && log2.send("Program Link Error: " + e.errorID + " " + e.message + "\n" + e.getStackTrace());
+                }
+                throw e;
+            }
+        }
+
+        if ( programInstance )
+            this.context.setProgram( programInstance.program );
+        else
+            throw new Error("No active program set to call glDrawTriangles!");
+
         CONFIG::debug {
             if (log2) log2.send("Going to draw " + (vertexCount / 3) + " triangles\n");
         }
@@ -3337,21 +3367,24 @@ public class GLAPI {
             }
         }
 
-        this._agalAssembler.assemble(Context3DProgramType.VERTEX, vertSource, this._agalVersion);
-        programInstance.vertexShader.agalcode = this._agalAssembler.agalcode;
+        programInstance.vertexShader.agalasm = vertSource;
+        programInstance.fragmentShader.agalasm = fragSource;
 
-        this._agalAssembler.assemble(Context3DProgramType.FRAGMENT, fragSource, this._agalVersion);
-        programInstance.fragmentShader.agalcode = this._agalAssembler.agalcode;
+        // this._agalAssembler.assemble(Context3DProgramType.VERTEX, vertSource, this._agalVersion);
+        // programInstance.vertexShader.agalcode = this._agalAssembler.agalcode;
 
-        try {
-            programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
-        }
-        catch (e:Error) {
-            CONFIG::debug {
-                log2 && log2.send("Program Link Error: " + e.errorID + " " + e.message + "\n" + e.getStackTrace());
-            }
-            throw e;
-        }
+        // this._agalAssembler.assemble(Context3DProgramType.FRAGMENT, fragSource, this._agalVersion);
+        // programInstance.fragmentShader.agalcode = this._agalAssembler.agalcode;
+
+        // try {
+            // programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
+        // }
+        // catch (e:Error) {
+            // CONFIG::debug {
+                // log2 && log2.send("Program Link Error: " + e.errorID + " " + e.message + "\n" + e.getStackTrace());
+            // }
+            // throw e;
+        // }
     }
 
     /* @private */
@@ -3404,59 +3437,63 @@ public class GLAPI {
         }
     }
 
+    [Inline]
+    static private function isUniformVariable(shaderType:uint, name:String):Boolean {
+        return name.charCodeAt(1) == 'c'.charCodeAt(0) || name.charCodeAt(1) == 's'.charCodeAt(0);
+    }
+
     [Internal]
     public function glGetUniformLocation(program:uint, name:String):uint {
-        this._variableID++;
-
         CONFIG::debug {
             if (log2) log2.send("[IMPLEMENTED] glGetUniformLocation from " + program + " @ " + name + " (going to use "
                     + _variableID + ")\n");
         }
 
+        var varID:int = -1;
         var programInstance:ProgramInstance = this._programs[program];
 
         var constantRegister:String = programInstance.vertexShader.json["varnames"][name];
-        if (constantRegister) {
+        if (constantRegister && isUniformVariable(GL_VERTEX_SHADER, constantRegister)) {
             CONFIG::debug {
                 if (log2) log2.send("glGetUniformLocation " + program + " : " + name + " found in Vertex Shader @ " +
                         constantRegister + "\n");
             }
 
-            this._variableHandles[this._variableID] = new VariableHandle(); // FIXME: Pooled VariableHandle ?
-            this._variableHandles[this._variableID].id = this._variableID;
-            this._variableHandles[this._variableID].shader = programInstance.vertexShader;
-            this._variableHandles[this._variableID].number = uint(constantRegister.substr(2));
-            this._variableHandles[this._variableID].name = constantRegister;
+            varID = this._variableID++;
 
-            return this._variableID;
+            this._variableHandles[varID] = new VariableHandle(); // FIXME: Pooled VariableHandle ?
+            this._variableHandles[varID].id = varID;
+            this._variableHandles[varID].shader = programInstance.vertexShader;
+            this._variableHandles[varID].number = uint(constantRegister.substr(2));
+            this._variableHandles[varID].name = constantRegister;
+
+            return varID;
         }
 
         constantRegister = programInstance.fragmentShader.json["varnames"][name];
-        if (constantRegister) {
+        if (constantRegister && isUniformVariable(GL_FRAGMENT_SHADER, constantRegister)) {
             CONFIG::debug {
                 if (log2) log2.send("glGetUniformLocation " + program + " : " + name + " found in Fragment Shader @ " +
                         constantRegister + "\n");
             }
 
-            this._variableHandles[this._variableID] = new VariableHandle(); // FIXME: Pooled VariableHandle ?
-            this._variableHandles[this._variableID].id = this._variableID;
-            this._variableHandles[this._variableID].shader = programInstance.fragmentShader;
-            this._variableHandles[this._variableID].number = uint(constantRegister.substr(2));
-            this._variableHandles[this._variableID].name = constantRegister;
+            varID = this._variableID++;
 
-            return this._variableID;
+            this._variableHandles[varID] = new VariableHandle(); // FIXME: Pooled VariableHandle ?
+            this._variableHandles[varID].id = varID;
+            this._variableHandles[varID].shader = programInstance.fragmentShader;
+            this._variableHandles[varID].number = uint(constantRegister.substr(2));
+            this._variableHandles[varID].name = constantRegister;
+
+            return varID;
         }
 
         // var not found on vertex or fragment shader
-        return -1;
+        return varID;
     }
 
     [Internal]
     public function glUniform4f(handle:uint, v0:Number, v1:Number, v2:Number, v3:Number):void {
-        CONFIG::debug {
-            if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) " + handle + "\n");
-        }
-
         var variableHandle = this._variableHandles[handle];
 
         CONFIG::debug {
@@ -3464,18 +3501,11 @@ public class GLAPI {
                     variableHandle.name + " register\n");
         }
 
-        if (variableHandle.name.substr(0, 2) == "fs") {
+        if (variableHandle.name.charCodeAt(0) == 'f'.charCodeAt(0) && variableHandle.name.charCodeAt(1) == 's'.charCodeAt(0)) {
             var texture:TextureInstance = _textureSamplers[uint(v0)];
             CONFIG::debug {
-                if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to "
+                if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to TexUnit "
                         + uint(v0) + " which resolves into " + texture.texture + "\n");
-            }
-
-            CONFIG::debug {
-                if (variableHandle.number != uint(v0)) {
-                    if (log2)
-                        log2.send("[WARNING] variable handler number is " + variableHandle.number + ", but sampler id is: " + uint(v0));
-                }
             }
 
             this.context.setTextureAt(variableHandle.number, texture.texture);
@@ -3540,7 +3570,7 @@ public class GLAPI {
         }
 
         var programInstance:ProgramInstance = this._programs[program];
-        this.context.setProgram(programInstance.program);
+        // this.context.setProgram(programInstance.program);
 
         this._activeProgramInstance = programInstance;
 
@@ -3963,6 +3993,7 @@ class ShaderInstance {
     public var id:uint;
     public var type:uint;
     public var agalcode:ByteArray;
+    public var agalasm:String;
     public var json:Object;
 }
 
@@ -3972,6 +4003,7 @@ class ProgramInstance {
     public var vertexShader:ShaderInstance;
     public var fragmentShader:ShaderInstance;
     public var attribMap:Dictionary = new Dictionary();
+    public var uploaded:Boolean;
 }
 
 class VariableHandle {
