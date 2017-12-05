@@ -2856,6 +2856,9 @@ public class GLAPI {
             dataOffset = ptr;
         }
 
+        this._activeTexture.format = Context3DTextureFormat.BGRA; // Only support BGRA just now for uncompressed format.
+        this._activeTexture.compressed = false;
+
         // Create appropriate texture type and upload data.
         if (target == GL_TEXTURE_2D) {
             this.create2DTexture(width, height, level, data, dataOffset);
@@ -2903,6 +2906,9 @@ public class GLAPI {
                 break;
         }
 
+        this._activeTexture.format = format;
+        this._activeTexture.compressed = true;
+
         if (target == GL_TEXTURE_2D)
             this.create2DTexture(width, height, level, ram, ptr, imageSize, format, true);
         else if (target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z)
@@ -2913,6 +2919,38 @@ public class GLAPI {
                         " for glCompressedTexImage2D");
             }
         }
+
+        // correct the miplevels, parsing the ATF data, querying the miplevel instead.
+        var oldPos:int = ram.position;
+        var idx:int = ptr;
+        var numTextures:uint = 0;
+        ram.position = idx + 6;
+        if ( ram.readUnsignedByte() == 255) {
+            idx += 12; // new file version.
+        } else {
+            idx += 6; // old file version.
+        }
+
+        idx += 3;
+        ram.position = idx;
+        numTextures = ram.readUnsignedByte();
+
+        var b5:int, b6:int;
+        ram.position = ptr + 5;
+        b5 = ram.readUnsignedByte();
+        b6 = ram.readUnsignedByte();
+
+        if (b5 != 0 && b6 == 255) {
+            if ((b5 & 0x01) == 1) { // nomip
+                numTextures = 1;
+            } else {
+                numTextures = b5 >> 1 & 0x7f;
+            }
+        }
+
+        ram.position = oldPos;
+
+        this._activeTexture.mipLevels = numTextures;
     }
 
     // Returns index of first texture, guaranteed to be contiguous
@@ -3369,71 +3407,159 @@ public class GLAPI {
 
         programInstance.vertexShader.agalasm = vertSource;
         programInstance.fragmentShader.agalasm = fragSource;
+        programInstance.uploaded = false;
 
-        // this._agalAssembler.assemble(Context3DProgramType.VERTEX, vertSource, this._agalVersion);
-        // programInstance.vertexShader.agalcode = this._agalAssembler.agalcode;
+        if (programInstance.fragmentSamplerStates)
+            programInstance.fragmentSamplerStates.length = 0;
+        else
+            programInstance.fragmentSamplerStates = new Vector.<FragmentSamplerState>();
+    }
 
-        // this._agalAssembler.assemble(Context3DProgramType.FRAGMENT, fragSource, this._agalVersion);
-        // programInstance.fragmentShader.agalcode = this._agalAssembler.agalcode;
+    static private function getSamplerFormatFlag(textureInstance:TextureInstance):String {
+        if (textureInstance.compressed) {
+            if (textureInstance.format == 'compressed') {
+                return 'dxt1';
+            } else if (textureInstance.format == 'compressedAlpha') {
+                return 'dxt5';
+            }
+        }
+        return null;
+    }
 
-        // try {
-            // programInstance.program.upload(programInstance.vertexShader.agalcode, programInstance.fragmentShader.agalcode);
-        // }
-        // catch (e:Error) {
-            // CONFIG::debug {
-                // log2 && log2.send("Program Link Error: " + e.errorID + " " + e.message + "\n" + e.getStackTrace());
-            // }
-            // throw e;
-        // }
+    static private function getSamplerStateFlags(texture:TextureInstance):Array {
+        var wrap:String = "clamp";
+        var filter:String = "nearest";
+        var mipFilter:String = "mipnone";
+
+        if (texture.params.GL_TEXTURE_WRAP_S == GL_REPEAT) {
+            wrap = "repeat";
+        }
+        else if (texture.params.GL_TEXTURE_WRAP_S == GL_CLAMP) {
+            wrap = "clamp";
+        }
+
+        if (texture.params.GL_TEXTURE_WRAP_S != texture.params.GL_TEXTURE_WRAP_T) {
+            wrap += "_u_";
+            if (texture.params.GL_TEXTURE_WRAP_T == GL_REPEAT) {
+                wrap += "repeat_v";
+            }
+            else {
+                wrap += "clamp_v";
+            }
+        }
+
+        if (texture.params.GL_TEXTURE_MAX_ANISOTROPY_EXT > 0) {
+            filter = "anisotropic" + texture.params.GL_TEXTURE_MAX_ANISOTROPY_EXT + 'x';
+        } else if (texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR ||
+                texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_LINEAR ||
+                texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_NEAREST) {
+            filter = "linear";
+        }
+
+        if (texture.mipLevels > 1) {
+            if (texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_LINEAR ||
+                    texture.params.GL_TEXTURE_MIN_FILTER == GL_NEAREST_MIPMAP_LINEAR) {
+                mipFilter = "miplinear";
+            }
+            else {
+                mipFilter = "mipnearest";
+            }
+        }
+
+        return [wrap, filter, mipFilter];
+    }
+
+    [Inline]
+    final private function get deferredSamplerStateSupported():Boolean {
+        return 'setSamplerStateAt' in this.context;
     }
 
     /* @private */
     protected function setSamplerState(sampler:uint, texture:TextureInstance):void {
-        if ('setSamplerStateAt' in this.context) {
-            // Context3D.setSamplerStateAt(sampler:int, wrap:String, filter:String, mipFilter:String)
-            var func:Function = context['setSamplerStateAt'] as Function;
-            var wrap:String = "clamp";
-            var filter:String = "nearest";
-            var mipFilter:String = "mipnone";
+        var programInstance:ProgramInstance = this._activeProgramInstance;
+        if (!programInstance)
+            return;
 
-            if (texture.params.GL_TEXTURE_WRAP_S == GL_REPEAT) {
-                wrap = "repeat";
-            }
-            else if (texture.params.GL_TEXTURE_WRAP_S == GL_CLAMP) {
-                wrap = "clamp";
-            }
+        var fragmentSamplerStates:Vector.<FragmentSamplerState> = programInstance.fragmentSamplerStates;
+        if (fragmentSamplerStates.length <= sampler)
+            fragmentSamplerStates.length = sampler + 1;
 
-            if (texture.params.GL_TEXTURE_WRAP_S != texture.params.GL_TEXTURE_WRAP_T) {
-                wrap += "_u_";
-                if (texture.params.GL_TEXTURE_WRAP_T == GL_REPEAT) {
-                    wrap += "repeat_v";
-                }
-                else {
-                    wrap += "clamp_v";
-                }
-            }
-
-            if (texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR ||
-                    texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_LINEAR ||
-                    texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_NEAREST) {
-                filter = "linear";
-            }
-
-            if (texture.mipLevels > 1) {
-                if (texture.params.GL_TEXTURE_MIN_FILTER == GL_LINEAR_MIPMAP_LINEAR ||
-                        texture.params.GL_TEXTURE_MIN_FILTER == GL_NEAREST_MIPMAP_LINEAR) {
-                    mipFilter = "miplinear";
-                }
-                else {
-                    mipFilter = "mipnearest";
-                }
-            }
-
-            func(sampler, wrap, filter, mipFilter);
+        var samplerState:FragmentSamplerState = fragmentSamplerStates[sampler];
+        if (!samplerState) {
+            samplerState = new FragmentSamplerState();
+            fragmentSamplerStates[sampler] = samplerState;
         }
-        else {
+
+        var formatDirty:Boolean = samplerState.compressed != texture.compressed || samplerState.format != texture.format;
+        var statesDirty:Boolean = samplerState.key != texture.key;
+        var shaderModified:Boolean = false;
+
+        if (!formatDirty && statesDirty && this.deferredSamplerStateSupported) {
+            // don't replace the shader, just set the sampler state later before drawing.
+            shaderModified = false;
+        } else if (formatDirty || statesDirty) {
+            // modified the shader source.
+            shaderModified = true;
+        }
+
+        CONFIG::debug {
             if (log2)
-                log2.send("[WARNING] Your driver profile doesn't support setting sampler state ...");
+                log2.send("[DEBUG] setSamplerState with format dirty " + formatDirty + ", states dirty " + statesDirty,
+                        "deferred sampler state setting supported " + this.deferredSamplerStateSupported);
+        }
+
+        samplerState.key = texture.key;
+
+        if (formatDirty) {
+            samplerState.compressed = texture.compressed;
+            samplerState.format = texture.format;
+        }
+
+        if (statesDirty)
+            samplerState.flags = getSamplerStateFlags(texture);
+
+        if (shaderModified) {
+            var agalasm:String = programInstance.fragmentShader.agalasm;
+            if (!agalasm) {
+                CONFIG::debug {
+                    if (log2)
+                        log2.send("[ERROR] Not availiable shader ASM found in fragment for sampler states setting fs"
+                            + sampler);
+                }
+                return;
+            }
+
+            CONFIG::debug {
+                if (log2)
+                    log2.send("[NOTE] Going to modified the fragment agalasm for sampler state setting fs" + sampler);
+            }
+
+            programInstance.uploaded = false;
+
+            var matches:Array = agalasm.match(new RegExp('fs' + sampler + '\\s*<[\\w,\\s*]+>'));
+            if (matches && matches.length > 0) {
+                var formatFlag:String = getSamplerFormatFlag(texture);
+                var str:String = 'fs' + sampler + ' <2d,';
+                if (formatFlag)
+                    str += formatFlag + ',';
+                str += samplerState.flags.join(',') + '>';
+                programInstance.fragmentShader.agalasm = agalasm.replace(matches[0], str);
+                CONFIG::debug {
+                    if (log2)
+                        log2.send("[DEBUG] Setting fs" + sampler + " flags to " + str);
+                }
+            } else {
+                CONFIG::debug {
+                    if (log2) {
+                        log2.send("[ERROR] Not availiable tex ... fs" + sampler + " <...> found in fragment shader.");
+                        log2.send("[DEBUG] matches " + matches ? matches[0] : "");
+                    }
+                }
+            }
+        } else if (statesDirty && this.deferredSamplerStateSupported) {
+            var func:Function = context['setSamplerStateAt'] as Function;
+            const options:Array = samplerState.flags;
+            func(sampler, /* wrap */ options[0], /* filter */ options[1], /* mipFilter */ options[2]);
         }
     }
 
@@ -3494,7 +3620,7 @@ public class GLAPI {
 
     [Internal]
     public function glUniform4f(handle:uint, v0:Number, v1:Number, v2:Number, v3:Number):void {
-        var variableHandle = this._variableHandles[handle];
+        var variableHandle:VariableHandle = this._variableHandles[handle];
 
         CONFIG::debug {
             if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) resolved " + handle + " into " +
@@ -3812,17 +3938,12 @@ public class GLAPI {
         }
 
         if (!instance.texture) {
-            instance.texture = this.context.createTexture(width, height, format, dataOff == 0 ? true : false, level);
+            instance.texture = this.context.createTexture(width, height, format, dataOff == 0 ? true : false );
             this._textureSamplers[this._activeTextureUnit] = instance;
         }
 
         if (level >= instance.mipLevels) {
-            instance.mipLevels++;
-        }
-        else {
-            CONFIG::debug {
-                if (log) log.send("[NOTE] glTexImage2D replacing mip...");
-            }
+            instance.mipLevels = level + 1;
         }
 
         // FIXME (egeorgie) - we need a boolean param instead?
@@ -3936,17 +4057,37 @@ class TextureInstance {
         _dirty = true;
     }
 
+    private var _format:String = "bgra";
+    final public function get format():String { return _format; }
+    final public function set format(value:String):void {
+        if (value == _format) return;
+        _format = value;
+        _dirty = true;
+    }
+
+    private var _compressed:Boolean;
+    final public function get compressed():Boolean { return _compressed; }
+    final public function set compressed(value:Boolean):void {
+        if (value == _compressed) return;
+        _compressed = value;
+        _dirty = true;
+    }
+
     final public function get key():String {
         if (!_cacheKey || _dirty) {
             _cacheKey = '';
             if (!_params)
-                _cacheKey += '0,0,0,';
+                _cacheKey += '0,0,0,0,0,';
             else {
                 _cacheKey += _params.GL_TEXTURE_WRAP_S;
                 _cacheKey += ',';
                 _cacheKey += _params.GL_TEXTURE_WRAP_T;
                 _cacheKey += ',';
+                _cacheKey += _params.GL_TEXTURE_MAG_FILTER;
+                _cacheKey += ',';
                 _cacheKey += _params.GL_TEXTURE_MIN_FILTER;
+                _cacheKey += ',';
+                _cacheKey += _params.GL_TEXTURE_MAX_ANISOTROPY_EXT;
                 _cacheKey += ',';
             }
             _cacheKey += (_mipLevels > 1 ? '1' : '0');
@@ -4003,7 +4144,15 @@ class ProgramInstance {
     public var vertexShader:ShaderInstance;
     public var fragmentShader:ShaderInstance;
     public var attribMap:Dictionary = new Dictionary();
+    public var fragmentSamplerStates:Vector.<FragmentSamplerState> = new <FragmentSamplerState>[];
     public var uploaded:Boolean;
+}
+
+class FragmentSamplerState {
+    public var compressed:Boolean;
+    public var format:String;
+    public var key:String;
+    public var flags:Array;
 }
 
 class VariableHandle {
