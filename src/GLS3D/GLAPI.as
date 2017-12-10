@@ -31,6 +31,7 @@
  */
 
 package GLS3D {
+
 import flash.display.*;
 import flash.display3D.*;
 import flash.display3D.textures.*;
@@ -38,6 +39,7 @@ import flash.geom.*;
 import flash.system.Capabilities;
 import flash.utils.*;
 
+import com.adobe.flascc.CModule;
 import com.adobe.utils.v3.*;
 
 // Linker trickery
@@ -101,6 +103,10 @@ public class GLAPI {
     private var _activeFramebuffer:FramebufferInstance;
     private var _framebuffers:Dictionary = new Dictionary();
     private var _framebufferID:uint = 1;
+
+    private var _activeRenderbuffer:RenderbufferInstance;
+    private var _renderbuffers:Dictionary = new Dictionary();
+    private var _renderbufferID:uint = 1;
 
     private var _shaders:Dictionary = new Dictionary();
     private var _shaderID:uint = 1;
@@ -2843,7 +2849,7 @@ public class GLAPI {
         // GL_DEPTH_COMPONENT16     GL_DEPTH_COMPONENT      GL_UNSIGNED_SHORT
         // GL_DEPTH_COMPONENT24     GL_DEPTH_COMPONENT      GL_UNSIGNED_INT
 
-        if (format != GL_BGRA) { // BGRA_PACKED, BGR_PACKED, etc
+        if (ptr > 0 && format != GL_BGRA) { // BGRA_PACKED, BGR_PACKED, etc
             CONFIG::debug {
                 if (log2) log2.send("[IMPLEMENTED] glTexImage2D: Converting to BGRA");
             }
@@ -3008,6 +3014,28 @@ public class GLAPI {
     }
 
     [Internal]
+    public function glDeleteFramebuffers(length:uint, ptr:int):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[IMPLEMENTED] glDeleteFramebuffers " + length + ", from ptr = 0x" + ptr.toString(16));
+        }
+
+        for (var i:int = 0; i < length; ++i) {
+            var id:int = CModule.read32(ptr + i * 4);
+            if (!(id in this._framebuffers))
+                continue;
+            var buffer:FramebufferInstance = this._framebuffers[id];
+            // TODO: dispose the framebuffer.
+            delete this._framebuffers[id];
+        }
+    }
+
+    [Internal]
+    public function glIsFramebuffer(framebuffer:uint):Boolean {
+        return framebuffer in this._framebuffers;
+    }
+
+    [Internal]
     public function glBindFramebuffer(target:uint, framebuffer:uint):void {
         CONFIG::debug {
             if (log2) log2.send("[IMPLEMENTED] glBindFramebuffer 0x" + target.toString(16) + " " + framebuffer + "\n");
@@ -3032,6 +3060,84 @@ public class GLAPI {
         }
 
         this._activeFramebuffer.texture = this._textures[texture];
+    }
+
+    [Internal]
+    public function glFramebufferRenderbuffer(target:uint, attachment:int, renderbufferTarget:uint, renderbuffer:uint):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[NOT IMPLEMENTED] glFramebufferRenderbuffer...");
+        }
+        // TODO: glFramebufferRenderbuffer.
+    }
+
+    [Internal]
+    public function glIsRenderbuffer(renderbuffer:uint):Boolean {
+        return renderbuffer in this._renderbuffers;
+    }
+
+    [Internal]
+    public function glGenRenderbuffers(size:uint):uint {
+        const result:uint = this._renderbufferID;
+        CONFIG::debug {
+            if (log2) log2.send("[IMPLEMENTED] glGenRenderbuffers " + size + ", returning ID = [ " + result + ", " +
+                    (result + size - 1) + " ]\n");
+        }
+        for (var i:int = 0; i < size; i++) {
+            this._renderbuffers[this._renderbufferID] = new RenderbufferInstance(); // FIXME: Pooled renderbuffer ?
+            this._renderbuffers[this._renderbufferID].id = this._renderbufferID;
+            this._renderbufferID++;
+        }
+        return result;
+    }
+
+    [Internal]
+    public function glDeleteRenderbuffer(length:uint, ptr:int):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[IMPLEMENTED] glDeleteRenderbuffers" + length + ", from ptr = 0x" + ptr.toString(16));
+        }
+
+        for (var i:int = 0; i < length; ++i) {
+            var id:int = CModule.read32(ptr + i * 4);
+            if (!(id in this._renderbuffers))
+                continue;
+            var buffer:RenderbufferInstance = this._renderbuffers[id];
+            // TODO: dispose the renderbuffer.
+            delete this._renderbuffers[id];
+        }
+    }
+
+    [Internal]
+    public function glBindRenderbuffer(target:uint, renderbuffer:uint):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[IMPLEMENTED] glBindRenderbuffer 0x" + target.toString(16) + " " + renderbuffer);
+        }
+
+        this._activeRenderbuffer = this._renderbuffers[renderbuffer];
+        // TODO: glBindRenderbuffer.
+    }
+
+    // extern void glRenderbufferStorage (GLenum target, GLenum internalformat, GLsizei width, GLsizei height)
+    [Internal]
+    public function glRenderbufferStorage(target:uint, internalFormat:int, width:uint, height:uint):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[IMPLEMENTED] glRenderbufferStorage 0x" + target.toString(16) + " f: 0x" +
+                        internalFormat.toString(16) + " WxH: " + width + "x" + height);
+        }
+        // TODO: glRenderbufferStorage
+    }
+
+    [Internal]
+    public function glRenderbufferStorageMultisample(target:uint, samples:uint, internalFormat:int, width:uint, height:uint):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[IMPLEMENTED] glRenderbufferStorageMultisample 0x" + target.toString(16) + " f: 0x" +
+                        internalFormat.toString(16) + " WxH: " + width + "x" + height + " s:" + samples);
+        }
+        // TODO: glRenderbufferStorageMultisample
     }
 
     [Internal]
@@ -3926,7 +4032,7 @@ public class GLAPI {
         var instance:TextureInstance = this._activeTexture;
         if (!instance) {
             CONFIG::debug {
-                if (log) log.send("[NOTE] No previously bound texture for glTexImage2D (2D)");
+                if (log) log.send("[NOTE] No previously bound texture for glTexImage2D/glCompressedTexImage2D (2D)");
             }
             return;
         }
@@ -3937,8 +4043,28 @@ public class GLAPI {
                         " c:" + compressedUpload);
         }
 
+        var texture:Texture = null;
+        var rectTexture:RectangleTexture = null;
         if (!instance.texture) {
-            instance.texture = this.context.createTexture(width, height, format, dataOff == 0 ? true : false );
+            var nonPowerOfTwo:Boolean = false;
+            if (!compressedUpload && format == "bgra") {
+                var logTwo:Number = 0.6931471805599453;
+                var powT:Number = Math.log(width) / logTwo;
+                if (powT - int(powT) > 0)
+                    nonPowerOfTwo = true;
+                if (!nonPowerOfTwo) {
+                    powT = Math.log(height) / logTwo;
+                    if (powT - int(powT) > 0)
+                        nonPowerOfTwo = true;
+                }
+            }
+
+            if (nonPowerOfTwo) {
+                instance.texture = rectTexture = this.context.createRectangleTexture(width, height, format, dataOff == 0 ? true : false );
+            } else {
+                instance.texture = texture = this.context.createTexture(width, height, format, dataOff == 0 ? true : false );
+            }
+
             this._textureSamplers[this._activeTextureUnit] = instance;
         }
 
@@ -3947,7 +4073,7 @@ public class GLAPI {
         }
 
         // FIXME (egeorgie) - we need a boolean param instead?
-        // if (dataOff != 0)
+        if (dataOff > 0)
         {
             var bytes:ByteArray = null;
             // if (dataLen > -1) {
@@ -3966,7 +4092,7 @@ public class GLAPI {
                             "), level(" + level + ") width: " + width + ", height: " + height);
                     if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]");
                 }
-                instance.texture.uploadCompressedTextureFromByteArray(bytes, dataOff);
+                texture.uploadCompressedTextureFromByteArray(bytes, dataOff);
             }
             else {
                 CONFIG::debug {
@@ -3974,7 +4100,10 @@ public class GLAPI {
                             level + ") width: " + width + ", height: " + height);
                     if (log) log.send("[DEBUG] data[length: " + data.length + ", bytes: " + data.bytesAvailable + "]");
                 }
-                instance.texture.uploadFromByteArray(bytes, dataOff, level);
+                if (texture)
+                    texture.uploadFromByteArray(bytes, dataOff, level);
+                else
+                    rectTexture.uploadFromByteArray(bytes, dataOff);
             }
         }
     }
@@ -3987,12 +4116,14 @@ public class GLAPI {
                 this._textureSamplers[this._activeTextureUnit] = instance;
             }
 
-            var side:int = target - GL_TEXTURE_CUBE_MAP_POSITIVE_X;
+            if (dataOff > 0) {
+                var side:int = target - GL_TEXTURE_CUBE_MAP_POSITIVE_X;
 
-            if (compressedUpload)
-                instance.cubeTexture.uploadCompressedTextureFromByteArray(data, dataOff);
-            else
-                instance.cubeTexture.uploadFromByteArray(data, dataOff, side, level);
+                if (compressedUpload)
+                    instance.cubeTexture.uploadCompressedTextureFromByteArray(data, dataOff);
+                else
+                    instance.cubeTexture.uploadFromByteArray(data, dataOff, side, level);
+            }
         }
         else if (log) log.send("[NOTE] No previously bound texture for glCompressedTexImage2D (2D)");
     }
@@ -4025,9 +4156,9 @@ class TextureInstance {
     private var _dirty:Boolean;
     private var _cacheKey:String;
 
-    private var _texture:Texture;
-    final public function get texture():Texture { return _texture; }
-    final public function set texture(value:Texture):void {
+    private var _texture:TextureBase;
+    final public function get texture():TextureBase { return _texture; }
+    final public function set texture(value:TextureBase):void {
         if (_texture == value) return;
         _texture = value;
         _dirty = true;
@@ -4127,8 +4258,21 @@ class FixedFunctionProgramInstance {
 
 class FramebufferInstance {
     public var id:uint;
-    public var texture:TextureInstance;
-}
+    public var depthBuffer:RenderbufferInstance;
+    public var stencilBuffer:RenderbufferInstance;
+    public var colorBuffers:Vector.<RenderbufferInstance>;
+    public var texture:TextureInstance; // render target
+} // class FramebufferInstance
+
+class RenderbufferInstance {
+    public var id:uint;
+    public var slot:int;
+    public var format:int;
+    public var depth:Boolean;
+    public var stencil:Boolean;
+    public var color:Boolean;
+    public var bufferTexture:Texture = null;
+} // class RenderbufferInstance
 
 class ShaderInstance {
     public var id:uint;

@@ -4936,6 +4936,18 @@ extern void glGenFramebuffers (GLsizei n, GLuint *framebuffers)
     }
 }
 
+extern GLboolean glIsFramebuffer(GLuint framebufferID)
+{
+    if (framebufferID == 0)
+        return GL_FALSE;
+
+    GLboolean ret = 0;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glIsFramebuffer(%0);\n" :: "r"(framebufferID));
+    AS3_GetScalarFromVar(ret, result);
+    return ret;
+}
+
 extern void glGetRenderbufferParameteriv (GLenum target, GLenum pname, GLint* params)
 {
     if(stubMsg) {
@@ -4960,9 +4972,11 @@ extern GLenum glCheckFramebufferStatus (GLenum target)
 
 extern void glDeleteFramebuffers (GLsizei n, const GLuint* framebuffers)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glDeleteFramebuffers...\n");
-    }
+    inline_as3(
+        "import GLS3D.GLAPI;\n"
+        "GLAPI.instance.glDeleteFramebuffers(%0, %1);\n"
+        :: "r"(n), "r"(framebuffers)
+    );
 }
 
 extern void glFramebufferTexture2D (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
@@ -4971,32 +4985,75 @@ extern void glFramebufferTexture2D (GLenum target, GLenum attachment, GLenum tex
            "GLAPI.instance.glFramebufferTexture2D(%0, %1, %2, %3, %4);\n" : : "r"(target), "r"(attachment), "r"(textarget), "r"(texture), "r"(level));
 }
 
+extern GLboolean glIsRenderbuffer(GLuint renderbufferID)
+{
+    if (renderbufferID == 0)
+        return GL_FALSE;
+
+    GLboolean ret = 0;
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glIsRenderbuffer(%0);\n" :: "r"(renderbufferID));
+    AS3_GetScalarFromVar(ret, result);
+    return ret;
+}
+
 extern void glGenRenderbuffers (GLsizei n, GLuint *renderbuffers)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glGenRenderbuffers...\n");
+    int i;
+    unsigned firstIndex;
+
+    inline_as3("import GLS3D.GLAPI;\n"\
+               "var result:uint = GLAPI.instance.glGenRenderbuffers(%0);\n" :: "r"(n));
+    AS3_GetScalarFromVar(firstIndex, result);
+
+    for (i = 0; i < n; i++) {
+        renderbuffers[i] = firstIndex + i;
     }
 }
 
 extern void glBindRenderbuffer (GLenum target, GLuint renderbuffer)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glBindRenderbuffer...\n");
-    }
+    inline_as3(
+        "import GLS3D.GLAPI;\n"
+        "GLAPI.instance.glBindRenderbuffer(%0, %1);\n"
+        :: "r"(target), "r"(renderbuffer)
+    );
+}
+
+extern void glDeleteRenderbuffers(GLsizei n, const GLuint *renderbuffers)
+{
+    inline_as3(
+        "import GLS3D.GLAPI;\n"
+        "GLAPI.instance.glDeleteRenderbuffers(%0, %1);\n"
+        :: "r"(n), "r"(renderbuffers)
+    );
+}
+
+extern void glRenderbufferStorageMultisample(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
+{
+    inline_as3(
+        "import GLS3D.GLAPI;\n"
+        "GLAPI.instance.glRenderbufferStorageMultisample(%0, %1, %2, %3, %4);\n"
+        :: "r"(target), "r"(samples), "r"(internalformat), "r"(width), "r"(height)
+    );
 }
 
 extern void glRenderbufferStorage (GLenum target, GLenum internalformat, GLsizei width, GLsizei height)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glRenderbufferStorage...\n");
-    }
+    inline_as3(
+        "import GLS3D.GLAPI;\n"
+        "GLAPI.instance.glRenderbufferStorage(%0, %1, %2, %3);\n"
+        :: "r"(target), "r"(internalformat), "r"(width), "r"(height)
+    );
 }
 
 extern void glFramebufferRenderbuffer (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glFramebufferRenderbuffer...\n");
-    }
+    inline_as3(
+        "import GLS3D.GLAPI;\n"
+        "GLAPI.instance.glFramebufferRenderbuffer(%0, %1, %2, %3);\n"
+        :: "r"(target), "r"(attachment), "r"(renderbuffertarget), "r"(renderbuffer)
+    );
 }
 
 extern void glGenerateMipmap (GLenum target)
