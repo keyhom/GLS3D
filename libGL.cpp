@@ -4674,22 +4674,40 @@ extern void glUniform4i (GLint location, GLint v0, GLint v1, GLint v2, GLint v3)
 
 extern void glUniform1fv (GLint location, GLsizei count, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform1fv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 1;
+        inline_as3(
+            "import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(0), "r"(0), "r"(0)
+        );
     }
 }
 
 extern void glUniform2fv (GLint location, GLsizei count, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform2fv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 2;
+        inline_as3(
+            "import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(value[base + 1]), "r"(0), "r"(0)
+        );
     }
 }
 
 extern void glUniform3fv (GLint location, GLsizei count, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform3fv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 3;
+        inline_as3(
+            "import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(0)
+        );
     }
 }
 
@@ -4705,50 +4723,104 @@ extern void glUniform4fv (GLint location, GLsizei count, const GLfloat *value)
 
 extern void glUniform1iv (GLint location, GLsizei count, const GLint *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform1iv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i;
+        inline_as3("import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(0), "r"(0), "r"(0)
+        );
     }
 }
 
 extern void glUniform2iv (GLint location, GLsizei count, const GLint *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform2iv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 2;
+        inline_as3("import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(value[base + 1]), "r"(0), "r"(0)
+        );
     }
 }
 
 extern void glUniform3iv (GLint location, GLsizei count, const GLint *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform3iv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 3;
+        inline_as3("import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(0)
+        );
     }
 }
 
 extern void glUniform4iv (GLint location, GLsizei count, const GLint *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniform4iv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 4;
+        inline_as3("import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniform4f(%0, %1, %2, %3, %4);\n"
+            :: "r"(location), "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(value[base + 3])
+        );
     }
+
 }
 
 extern void glUniformMatrix2fv (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniformMatrix2fv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 2 * 2;
+        inline_as3(
+            "import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniformMatrix4f(%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17);\n"
+            :: "r"(location), "r"(transpose),
+            "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(value[base + 3]),
+            "r"(0), "r"(0), "r"(0), "r"(0),
+            "r"(0), "r"(0), "r"(0), "r"(0),
+            "r"(0), "r"(0), "r"(0), "r"(0)
+        );
     }
 }
 
 extern void glUniformMatrix3fv (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glUniformMatrix3fv...\n");
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 3 * 3;
+        inline_as3(
+            "import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniformMatrix4f(%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17);\n"
+            :: "r"(location), "r"(transpose),
+            "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(value[base + 3]),
+            "r"(value[base + 4]), "r"(value[base + 5]), "r"(value[base + 6]), "r"(value[base + 7]),
+            "r"(value[base + 8]),
+            "r"(0), "r"(0), "r"(0), "r"(0), "r"(0), "r"(0), "r"(0)
+        );
     }
 }
 
 extern void glUniformMatrix4fv (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value)
 {
-    inline_as3("import GLS3D.GLAPI;\n"\
-      "GLAPI.instance.glUniformMatrix4f(%0, %1,    %2, %3, %4, %5,  %6, %7, %8, %9,  %10, %11, %12, %13,  %14, %15, %16, %17)\n" :: "r"(location), "r"(transpose), "r"(value[0]), "r"(value[1]), "r"(value[2]), "r"(value[3]), "r"(value[4]), "r"(value[5]), "r"(value[6]), "r"(value[7]), "r"(value[8]), "r"(value[9]), "r"(value[10]), "r"(value[11]), "r"(value[12]), "r"(value[13]), "r"(value[14]), "r"(value[15]));
+    // inline_as3("import GLS3D.GLAPI;\n"\
+      // "GLAPI.instance.glUniformMatrix4f(%0, %1,    %2, %3, %4, %5,  %6, %7, %8, %9,  %10, %11, %12, %13,  %14, %15, %16, %17)\n" :: "r"(location), "r"(transpose), "r"(value[0]), "r"(value[1]), "r"(value[2]), "r"(value[3]), "r"(value[4]), "r"(value[5]), "r"(value[6]), "r"(value[7]), "r"(value[8]), "r"(value[9]), "r"(value[10]), "r"(value[11]), "r"(value[12]), "r"(value[13]), "r"(value[14]), "r"(value[15]));
+    GLint base = 0;
+    for (GLsizei i = 0; i < count; ++i) {
+        base = i * 4 * 4;
+        inline_as3(
+            "import GLS3D.GLAPI;\n"
+            "GLAPI.instance.glUniformMatrix4f(%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17);\n"
+            :: "r"(location), "r"(transpose),
+            "r"(value[base + 0]), "r"(value[base + 1]), "r"(value[base + 2]), "r"(value[base + 3]),
+            "r"(value[base + 4]), "r"(value[base + 5]), "r"(value[base + 6]), "r"(value[base + 7]),
+            "r"(value[base + 8]), "r"(value[base + 9]), "r"(value[base + 10]),"r"(value[base + 11]),
+            "r"(value[base + 12]), "r"(value[base + 13]), "r"(value[base + 14]),"r"(value[base + 15])
+        );
+    }
 }
 
 extern void glGetShaderiv (GLuint shader, GLenum pname, GLint *params)
