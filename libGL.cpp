@@ -4613,9 +4613,8 @@ extern void glUseProgram (GLuint program)
 
 extern void glDeleteProgram (GLuint program)
 {
-    if(stubMsg) {
-        fprintf(stderr, "stubbed glDeleteProgram...\n");
-    }
+    inline_as3("import GLS3D.GLAPI;\n"
+               "GLAPI.instance.glDeleteProgram(%0);\n" :: "r"(program));
 }
 
 extern void glValidateProgram (GLuint program)

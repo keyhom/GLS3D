@@ -115,7 +115,7 @@ public class GLAPI {
     private var _programID:uint = 1;
     private var _activeProgramInstance:ProgramInstance = null;
 
-    private var _variableHandles:Dictionary = new Dictionary();
+    // private var _variableHandles:Dictionary = new Dictionary();
     private var _variableID:uint = 1;
 
     private var _buffers:Dictionary = new Dictionary();
@@ -446,10 +446,11 @@ public class GLAPI {
             case GL_VERSION:
                 return "2.1";
             case GL_SHADING_LANGUAGE_VERSION:
-                if (this._profileIndex > 4)
-                    return "1.50";
-                else if (this._profileIndex == 4)
+                if (this._profileIndex >= 4)
                     return "1.30";
+                    // return "1.50";
+                // else if (this._profileIndex == 4)
+                    // return "1.30";
                 return "1.20";
             case GL_EXTENSIONS:
                 return this._glExtensions;
@@ -3206,6 +3207,14 @@ public class GLAPI {
     }
 
     [Internal]
+    public function glDeleteProgram(program:uint):void {
+        if (program in this._programs) {
+            (this._programs[program] as ProgramInstance).dispose();
+            delete this._programs[program];
+        }
+    }
+
+    [Internal]
     public function glAttachShader(program:uint, shader:uint):void {
         var programInstance:ProgramInstance = _programs[program];
         var shaderInstance:ShaderInstance = _shaders[shader];
@@ -3298,6 +3307,17 @@ public class GLAPI {
 
         // We can no resolve agalIndex for specified vertexAttribute without active program
         if (!this._activeProgramInstance) {
+            return;
+        }
+
+        // confirm the va[index] attribute available in vertex program.
+        var vertexTypes:Object = this._activeProgramInstance.vertexShader.json['types'];
+        if (!(('va' + index) in vertexTypes)) {
+            CONFIG::debug {
+                if (log2)
+                    log2.send("setVertexBuffer (ignored): index: " + index + " buffer: " + buffer + " offset: " +
+                        offset + " elementSize: " + elementSize + "\n");
+            }
             return;
         }
 
@@ -3649,7 +3669,7 @@ public class GLAPI {
                 if (formatFlag)
                     str += formatFlag + ',';
                 str += samplerState.flags.join(',') + '>';
-                programInstance.fragmentShader.agalasm = agalasm.replace(matches[0], str);
+                programInstance.fragmentShader.agalasm = agalasm.replace(new RegExp(matches[0], 'g'), str);
                 CONFIG::debug {
                     if (log2)
                         log2.send("[DEBUG] Setting fs" + sampler + " flags to " + str);
@@ -3674,15 +3694,30 @@ public class GLAPI {
         return name.charCodeAt(1) == 'c'.charCodeAt(0) || name.charCodeAt(1) == 's'.charCodeAt(0);
     }
 
+    [Inline]
+    static private function isSamplerVariable(name:String):Boolean {
+        return name.charCodeAt(0) == 'f'.charCodeAt(0) && name.charCodeAt(1) == 's'.charCodeAt(0);
+    }
+
     [Internal]
     public function glGetUniformLocation(program:uint, name:String):uint {
-        CONFIG::debug {
-            if (log2) log2.send("[IMPLEMENTED] glGetUniformLocation from " + program + " @ " + name + " (going to use "
-                    + _variableID + ")\n");
+        var varID:int = -1;
+
+        const programInstance:ProgramInstance = this._programs[program];
+        const uniformMap:Dictionary = programInstance.uniformMap;
+        const uniformLocationMap:Object = programInstance.uniformLocationMap;
+
+        if (name in uniformLocationMap) {
+            varID = int(uniformLocationMap[name]);
+        } else {
+            varID = this._variableID;
         }
 
-        var varID:int = -1;
-        var programInstance:ProgramInstance = this._programs[program];
+        CONFIG::debug {
+            if (log2) log2.send("[IMPLEMENTED] glGetUniformLocation from " + program + " @ " + name + " (going to use "
+                    + varID + ")\n");
+        }
+
 
         var constantRegister:String = programInstance.vertexShader.json["varnames"][name];
         if (constantRegister && isUniformVariable(GL_VERTEX_SHADER, constantRegister)) {
@@ -3691,13 +3726,14 @@ public class GLAPI {
                         constantRegister + "\n");
             }
 
-            varID = this._variableID++;
+            this._variableID++;
+            uniformLocationMap[name] = varID;
 
-            this._variableHandles[varID] = new VariableHandle(); // FIXME: Pooled VariableHandle ?
-            this._variableHandles[varID].id = varID;
-            this._variableHandles[varID].shader = programInstance.vertexShader;
-            this._variableHandles[varID].number = uint(constantRegister.substr(2));
-            this._variableHandles[varID].name = constantRegister;
+            uniformMap[varID] = uniformMap[varID] || new UniformVariable;
+            uniformMap[varID].id = varID;
+            uniformMap[varID].type = GL_VERTEX_SHADER;
+            uniformMap[varID].number = uint(constantRegister.substr(2));
+            uniformMap[varID].name = constantRegister;
 
             return varID;
         }
@@ -3709,51 +3745,55 @@ public class GLAPI {
                         constantRegister + "\n");
             }
 
-            varID = this._variableID++;
+            this._variableID++;
+            uniformLocationMap[name] = varID;
 
-            this._variableHandles[varID] = new VariableHandle(); // FIXME: Pooled VariableHandle ?
-            this._variableHandles[varID].id = varID;
-            this._variableHandles[varID].shader = programInstance.fragmentShader;
-            this._variableHandles[varID].number = uint(constantRegister.substr(2));
-            this._variableHandles[varID].name = constantRegister;
+            uniformMap[varID] = uniformMap[varID] || new UniformVariable;
+            uniformMap[varID].id = varID;
+            uniformMap[varID].type = GL_FRAGMENT_SHADER;
+            uniformMap[varID].number = uint(constantRegister.substr(2));
+            uniformMap[varID].name = constantRegister;
 
             return varID;
         }
 
         // var not found on vertex or fragment shader
-        return varID;
+        return -1;
     }
 
     [Internal]
     public function glUniform4f(handle:uint, v0:Number, v1:Number, v2:Number, v3:Number):void {
-        var variableHandle:VariableHandle = this._variableHandles[handle];
+        const programInstance:ProgramInstance = this._activeProgramInstance;
+        const uniformMap:Dictionary = programInstance.uniformMap;
+
+        var variable:UniformVariable = uniformMap[handle] as UniformVariable;
 
         CONFIG::debug {
             if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) resolved " + handle + " into " +
-                    variableHandle.name + " register\n");
+                    variable.name + " register\n");
         }
 
-        if (variableHandle.name.charCodeAt(0) == 'f'.charCodeAt(0) && variableHandle.name.charCodeAt(1) == 's'.charCodeAt(0)) {
+        if (isSamplerVariable(variable.name)) {
             var texture:TextureInstance = _textureSamplers[uint(v0)];
             CONFIG::debug {
                 if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) encountered fsX register - setting texture sampler to TexUnit "
                         + uint(v0) + " which resolves into " + texture.texture + "\n");
             }
 
-            this.context.setTextureAt(variableHandle.number, texture.texture);
+            this.context.setTextureAt(variable.number, texture.texture);
 
             // Sets the sampler state here.
-            this.setSamplerState(variableHandle.number, texture);
+            this.setSamplerState(variable.number, texture);
             return;
         }
 
-        var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX :
+        var shaderType:String = variable.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX :
             Context3DProgramType.FRAGMENT;
-        context.setProgramConstantsFromVector(shaderType, variableHandle.number, Vector.<Number>([v0, v1, v2, v3]));
+        context.setProgramConstantsFromVector(shaderType, variable.number, Vector.<Number>([v0, v1, v2, v3]));
 
         CONFIG::debug {
             if (log2) log2.send("[IMPLEMENTED] glUniform(1,2,3,4)(f,i) uniform location(" + handle + ") set constants resolved as " +
-                    variableHandle.name + "\nregister to opIndex " + variableHandle.number + " width values [" + v0 +
+                    variable.name + "\nregister to opIndex " + variable.number + " width values [" + v0 +
                     "," + v1 + "," + v2 + "," + v3 + "]");
         }
     }
@@ -3764,12 +3804,16 @@ public class GLAPI {
             if (log2) log2.send("[IMPLEMENTED] glUniformMatrix4f with location " + handle + "\n");
         }
 
-        var variableHandle = this._variableHandles[handle];
-        var shaderType:String = variableHandle.shader.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX :
+        const programInstance:ProgramInstance = this._activeProgramInstance;
+        const uniformMap:Dictionary = programInstance.uniformMap;
+
+        var variable:UniformVariable = uniformMap[handle] as UniformVariable;
+
+        var shaderType:String = variable.type == GL_VERTEX_SHADER ? Context3DProgramType.VERTEX :
             Context3DProgramType.FRAGMENT;
 
         CONFIG::debug {
-            if (log2) log2.send("[IMPLEMENTED] glUniformMatrix4f setting float4x4 into vc" + variableHandle.number +
+            if (log2) log2.send("[IMPLEMENTED] glUniformMatrix4f setting float4x4 into vc" + variable.number +
                     " for " + shaderType + "\n");
             if (log2) log2.send("[IMPLEMENTED] glUniformMatrix4f value = \n" + v0 + " " + v1 + " " + v2 + " " + v3 + "\n"
                     + v4 + " " + v5 + " " + v6 + " " + v7 + "\n"
@@ -3778,7 +3822,7 @@ public class GLAPI {
                     + "\n");
         }
 
-        context.setProgramConstantsFromMatrix(shaderType, variableHandle.number, new Matrix3D(Vector.<Number>([
+        context.setProgramConstantsFromMatrix(shaderType, variable.number, new Matrix3D(Vector.<Number>([
             v0, v1, v2, v3,
             v4, v5, v6, v7,
             v8, v9, v10, v11,
@@ -3802,9 +3846,14 @@ public class GLAPI {
         }
 
         var programInstance:ProgramInstance = this._programs[program];
-        // this.context.setProgram(programInstance.program);
+
+        if (this._activeProgramInstance) {
+            // reset the current program instance state.
+            this.detachVariables(this._activeProgramInstance);
+        }
 
         this._activeProgramInstance = programInstance;
+        this.context.setProgram(programInstance.program);
 
         var constantName:String;
         var consts:Object = programInstance.vertexShader.json["consts"];
@@ -3826,6 +3875,21 @@ public class GLAPI {
             }
             this.context.setProgramConstantsFromVector(Context3DProgramType.FRAGMENT, uint(constantName.substr(2)),
                     Vector.<Number>(consts[constantName]));
+        }
+    }
+
+    protected function detachVariables(program:ProgramInstance):void {
+        const programInstance:ProgramInstance = this._activeProgramInstance;
+        const uniformMap:Dictionary = programInstance.uniformMap;
+        for each (var variable:UniformVariable in uniformMap) {
+            if (isSamplerVariable(variable.name)) {
+                CONFIG::debug {
+                    if (log)
+                        log.send("[NOTE] clear texture sampler state at " + variable.name);
+                }
+                // detach texture state.
+                this.context.setTextureAt(variable.number, null);
+            }
         }
     }
 
@@ -4043,8 +4107,9 @@ public class GLAPI {
                         " c:" + compressedUpload);
         }
 
-        var texture:Texture = null;
-        var rectTexture:RectangleTexture = null;
+        var texture:Texture = instance.texture as Texture;
+        var rectTexture:RectangleTexture = instance.texture as RectangleTexture;
+
         if (!instance.texture) {
             var nonPowerOfTwo:Boolean = false;
             if (!compressedUpload && format == "bgra") {
@@ -4289,7 +4354,20 @@ class ProgramInstance {
     public var fragmentShader:ShaderInstance;
     public var attribMap:Dictionary = new Dictionary();
     public var fragmentSamplerStates:Vector.<FragmentSamplerState> = new <FragmentSamplerState>[];
+    public var uniformMap:Dictionary = new Dictionary();
+    public var uniformLocationMap:Object = {};
     public var uploaded:Boolean;
+
+    public function dispose():void {
+        this.program.dispose();
+        this.vertexShader = null;
+        this.fragmentShader = null;
+        this.attribMap = null;
+        this.fragmentSamplerStates.length = 0;
+        this.fragmentSamplerStates = null;
+        this.uniformMap = null;
+        this.uniformLocationMap = null;
+    }
 }
 
 class FragmentSamplerState {
@@ -4299,12 +4377,20 @@ class FragmentSamplerState {
     public var flags:Array;
 }
 
-class VariableHandle {
+class UniformVariable {
     public var id:uint;
-    public var shader:ShaderInstance;
+    public var type:uint; // VERTEX / FRAGMENT
     public var number:uint;
     public var name:String;
 }
+
+// class VariableHandle {
+    // public var id:uint;
+    // public var shader:ShaderInstance;
+    // public var number:uint;
+    // public var name:String;
+    // public var inUse:Boolean;
+// }
 
 /**
  *  Represents the vertices as defined between calls of glBeing() and glEnd().
