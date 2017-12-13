@@ -100,6 +100,8 @@ public class GLAPI {
     private var _texID:uint = 1; // so we have 0 as non-valid id
     private var NULL_TEXTURE:TextureBase = null;
 
+    private var _backBufferTarget:Boolean = true;
+    private var _backBufferTargetDirty:Boolean = false;
     private var _activeFramebuffer:FramebufferInstance;
     private var _framebuffers:Dictionary = new Dictionary();
     private var _framebufferID:uint = 1;
@@ -134,10 +136,10 @@ public class GLAPI {
     private var _texGenParamT:uint = GL_SPHERE_MAP;
     private var _contextWidth:int = 0;
     private var _contextHeight:int = 0;
-    private var _contextClearR:Number;
-    private var _contextClearG:Number;
-    private var _contextClearB:Number;
-    private var _contextClearA:Number;
+    private var _contextClearR:Number = 0;
+    private var _contextClearG:Number = 0;
+    private var _contextClearB:Number = 0;
+    private var _contextClearA:Number = 1;
     private var _contextClearDepth:Number = 1.0;
     private var _contextClearStencil:uint = 0;
     private var _contextClearMask:uint;
@@ -2191,6 +2193,8 @@ public class GLAPI {
             if (log) log.send("glClear called with " + mask);
         }
 
+        this.updateRenderTarget();
+
         this._contextClearMask = 0;
         if (Boolean(mask & GL_COLOR_BUFFER_BIT)) this._contextClearMask |= Context3DClearMask.COLOR;
         if (Boolean(mask & GL_STENCIL_BUFFER_BIT)) this._contextClearMask |= Context3DClearMask.STENCIL;
@@ -2960,6 +2964,11 @@ public class GLAPI {
         this._activeTexture.mipLevels = numTextures;
     }
 
+    [Internal]
+    public function glIsTexture(texid:uint):Boolean {
+        return texid in this._textures;
+    }
+
     // Returns index of first texture, guaranteed to be contiguous
     [Internal]
     public function glGenTextures(length:uint):uint {
@@ -2997,6 +3006,8 @@ public class GLAPI {
             _textures[texid].cubeTexture.dispose();
 
         _textures[texid] = null; // TODO: fix things so we can eventually reuse textureIDs
+
+        // FIXME: delete from texture samplers ?
     }
 
     [Internal]
@@ -3043,14 +3054,22 @@ public class GLAPI {
         }
 
         if (framebuffer != 0) {
+            this._backBufferTargetDirty = this._activeFramebuffer != this._framebuffers[framebuffer];
             this._activeFramebuffer = this._framebuffers[framebuffer];
-            if (this._activeFramebuffer.texture) {
-                this.context.setRenderToTexture(this._activeFramebuffer.texture.texture);
+
+            if (this._backBufferTargetDirty) // reset the render target if framebuffer binding changed.
+                this.context.setRenderToTexture(null);
+        } else {
+            if (this._activeFramebuffer) {
+                this._activeFramebuffer = null;
+                this._backBufferTargetDirty = true;
             }
+
+            if (this._backBufferTargetDirty && !this._backBufferTarget)
+                this.context.setRenderToTexture(null);
         }
-        else {
-            this.context.setRenderToBackBuffer();
-        }
+
+        this._backBufferTarget = framebuffer == 0;
     }
 
     [Internal]
@@ -3060,7 +3079,15 @@ public class GLAPI {
                     " " + texture + " " + level + "\n");
         }
 
-        this._activeFramebuffer.texture = this._textures[texture];
+        const fb:FramebufferInstance = this._activeFramebuffer;
+        fb.texture = this._textures[texture];
+
+        if (attachment == GL_DEPTH_ATTACHMENT) {
+            fb.depth = true;
+        } else if (attachment == GL_DEPTH_STENCIL_ATTACHMENT) {
+            fb.depth = true;
+            fb.stencil = true;
+        }
     }
 
     [Internal]
@@ -3070,6 +3097,29 @@ public class GLAPI {
                 log2.send("[NOT IMPLEMENTED] glFramebufferRenderbuffer...");
         }
         // TODO: glFramebufferRenderbuffer.
+        const fb:FramebufferInstance = this._activeFramebuffer;
+        if (attachment == GL_DEPTH_ATTACHMENT) {
+            fb.depth = true;
+        } else if (attachment == GL_DEPTH_STENCIL_ATTACHMENT) {
+            fb.depth = true;
+            fb.stencil = true;
+        }
+    }
+
+    /* @private */
+    protected function updateRenderTarget():void {
+        if (this._backBufferTargetDirty) {
+            this._backBufferTargetDirty = false;
+            if (this._backBufferTarget) {
+                this.context.setRenderToBackBuffer();
+            } else {
+                if (this._activeFramebuffer.texture) {
+                    this.context.setRenderToTexture(this._activeFramebuffer.texture.texture,
+                            this._activeFramebuffer.depth || this._activeFramebuffer.stencil,
+                            this._activeFramebuffer.samples);
+                }
+            }
+        }
     }
 
     [Internal]
@@ -3128,7 +3178,11 @@ public class GLAPI {
                 log2.send("[IMPLEMENTED] glRenderbufferStorage 0x" + target.toString(16) + " f: 0x" +
                         internalFormat.toString(16) + " WxH: " + width + "x" + height);
         }
+        const rb:RenderbufferInstance = this._activeRenderbuffer;
         // TODO: glRenderbufferStorage
+        if (internalFormat == GL_DEPTH_COMPONENT) {
+            rb.depth = true;
+        }
     }
 
     [Internal]
@@ -3138,7 +3192,8 @@ public class GLAPI {
                 log2.send("[IMPLEMENTED] glRenderbufferStorageMultisample 0x" + target.toString(16) + " f: 0x" +
                         internalFormat.toString(16) + " WxH: " + width + "x" + height + " s:" + samples);
         }
-        // TODO: glRenderbufferStorageMultisample
+        // TODO: glRenderbufferStorageMultisample, fallback to glRenderbufferStorage.
+        this.glRenderbufferStorage(target, internalFormat, width, height);
     }
 
     [Internal]
@@ -3402,6 +3457,8 @@ public class GLAPI {
 
     [Internal]
     public function glDrawTriangles(vertexCount:uint, stripe:Boolean) {
+        this.updateRenderTarget();
+
         if (this._activeElementArrayBuffer == null && this._indexBuffer == null) {
             CONFIG::debug {
                 if (log2) log2.send("glDrawTriangles: Generating index buffer.\n");
@@ -4323,9 +4380,9 @@ class FixedFunctionProgramInstance {
 
 class FramebufferInstance {
     public var id:uint;
-    public var depthBuffer:RenderbufferInstance;
-    public var stencilBuffer:RenderbufferInstance;
-    public var colorBuffers:Vector.<RenderbufferInstance>;
+    public var depth:Boolean;
+    public var stencil:Boolean;
+    public var samples:uint = 0;
     public var texture:TextureInstance; // render target
 } // class FramebufferInstance
 

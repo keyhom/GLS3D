@@ -1032,7 +1032,6 @@ extern void glScissor (GLint x, GLint y, GLsizei width, GLsizei height)
 extern void glDeleteLists (GLuint list, GLsizei range)
 {
     inline_as3("import GLS3D.GLAPI;\n"\
-               // "GLAPI.instance.send('glDeleteLists not yet implemented.');");
         "GLAPI.instance.glDeleteLists(%0, %1);\n" : : "r"(list), "r"(range));
 }
 
@@ -1050,11 +1049,16 @@ extern void glDeleteTextures (GLsizei n, const GLuint *textures)
            "GLAPI.instance.glDeleteTexture(%0);\n" :  : "r"(textures[i]));
 }
 
-extern GLboolean glIsTexture (GLuint texture)
+extern GLboolean glIsTexture (GLuint texid)
 {
+    if (texid == 0)
+        return GL_FALSE;
+
+    GLboolean ret = 0;
     inline_as3("import GLS3D.GLAPI;\n"\
-               "GLAPI.instance.send('glIsTexture not yet implemented.');");
-    return GL_FALSE;
+               "var result:Boolean = GLAPI.instance.glIsTexture(%0);\n" :: "r"(texid));
+    AS3_GetScalarFromVar(ret, result);
+    return ret;
 }
 
 extern void glColor4f (GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
@@ -1112,14 +1116,6 @@ extern void glColor3f (GLfloat red, GLfloat green, GLfloat blue)
 
 extern void glColor3d (GLdouble red, GLdouble green, GLdouble blue)
 {
-    // float fr = (float)red;
-    // float fg = (float)green;
-    // float fb = (float)blue;
-    // float fa = (float)1.0f;
-
-    // inline_as3("import GLS3D.GLAPI;\n"\
-           // "GLAPI.instance.glColor(%0, %1, %2, %3);\n" : : "r"(fr), "r"(fg), "r"(fb), "r"(fa));
-    // vbb.glColor(fr, fg, fb, fa);
     glColor3f(red, green, blue);
 }
 
@@ -1213,6 +1209,7 @@ extern void glFrustum (GLdouble left, GLdouble right, GLdouble bottom, GLdouble 
 
 extern void glDrawBuffers (GLsizei n, const GLenum *bufs)
 {
+    // TODO: glDrawBuffers
     inline_as3("import GLS3D.GLAPI;\n"\
                "GLAPI.instance.send('glDrawBuffers not yet implemented.');");
 }

@@ -469,3 +469,8 @@ public static const UNIFORM_TYPES:Array = [
 	"Unknown",
 	"GL_SAMPLER_CUBE",
 ]
+
+/* Framebuffer & Renderbuffer */
+public static const GL_DEPTH_ATTACHMENT:uint = 0x8D00
+public static const GL_DEPTH_STENCIL_ATTACHMENT:uint = 0x821A
+public static const GL_COLOR_ATTACHMENT0:uint = 0x8CE0
