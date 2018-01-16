@@ -3227,11 +3227,22 @@ public class GLAPI {
 
         CONFIG::debug {
             const source:String = obj["agalasm"];
-            if (log2) log2.send("[IMPLEMENTED] glShaderSource(#agalVersion " + this._agalVersion + ") \n" + source);
+            if (log2) log2.send("[IMPLEMENTED] glShaderSource(#agalVersion " + (int(obj['version']) || this._agalVersion) + ") \n" + source);
         }
 
         var shaderInstance:ShaderInstance = _shaders[shader];
         shaderInstance.json = obj;
+    }
+
+    [Internal]
+    public function glShaderSourceVersion(shader:uint, version:int):void {
+        CONFIG::debug {
+            if (log2)
+                log2.send("[EXT] glShaderSourceVersion setted #version " + version + " for shader " + shader);
+        }
+
+        var shaderInstance:ShaderInstance = _shaders[shader];
+        shaderInstance.json['version'] = version;
     }
 
     [Internal]
@@ -3504,11 +3515,11 @@ public class GLAPI {
         const programInstance:ProgramInstance = this._activeProgramInstance;
         if ( programInstance && !programInstance.uploaded ) {
             this._agalAssembler.assemble(Context3DProgramType.VERTEX, programInstance.vertexShader.agalasm,
-                    this._agalVersion);
+                    int(programInstance.vertexShader.json['version']) || this._agalVersion);
             programInstance.vertexShader.agalcode = this._agalAssembler.agalcode;
 
             this._agalAssembler.assemble(Context3DProgramType.FRAGMENT, programInstance.fragmentShader.agalasm,
-                    this._agalVersion);
+                    int(programInstance.fragmentShader.json['version']) || this._agalVersion);
             programInstance.fragmentShader.agalcode = this._agalAssembler.agalcode;
 
             try {

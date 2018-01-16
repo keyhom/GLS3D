@@ -4569,6 +4569,13 @@ extern void glCompileShader (GLuint shader)
                "GLAPI.instance.glCompileShader(%0);\n" :: "r"(shader));
 }
 
+extern void glShaderSourceVersion(GLuint shader, GLuint version) {
+    inline_as3("import GLS3D.GLAPI;\n"
+               "GLAPI.instance.glShaderSourceVersion(%0, %1);\n"
+               :: "r"(shader), "r"(version)
+               );
+}
+
 extern GLboolean glIsProgram(GLuint program)
 {
     if (program == 0)
