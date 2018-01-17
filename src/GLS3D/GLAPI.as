@@ -3110,6 +3110,7 @@ public class GLAPI {
     protected function updateRenderTarget():void {
         if (this._backBufferTargetDirty) {
             this._backBufferTargetDirty = false;
+
             if (this._backBufferTarget) {
                 this.context.setRenderToBackBuffer();
             } else {
@@ -3119,6 +3120,8 @@ public class GLAPI {
                             this._activeFramebuffer.samples);
                 }
             }
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
     }
 
@@ -3572,6 +3575,7 @@ public class GLAPI {
 
         var replaceVars:Object = {};
         var matches:Array;
+        var replaceNeeded:Boolean = false;
 
         for (var fvKey:* in fragVarnames) {
             if ((matches = fragVarnames[fvKey].match(/v\d+/) || []).length > 0) {
@@ -3580,21 +3584,53 @@ public class GLAPI {
                 if (vertVarnames[fvKey] == fragVarnames[fvKey])
                     continue;
                 replaceVars[fragVarnames[fvKey]] = vertVarnames[fvKey];
+                replaceNeeded = true;
             }
         }
 
-        var replaced:Boolean;
-        for (var rk:* in replaceVars) {
-            CONFIG::debug {
-                if (log2) log2.send("Syncing fragment shader's varying " + rk + " into vertex shader's varying " +
-                        replaceVars[rk] + "\n");
+        if (replaceNeeded && replaceVars) {
+            // map indexes
+            var str:String = fragSource;
+            var lastIdx:int = 0;
+            var charCode:int = 0;
+            var match:Boolean;
+            var splits:Array = [];
+            for (var i:int = 0; i < str.length; ++i) {
+                charCode = str.charCodeAt(i);
+                for (var rk:String in replaceVars) {
+                    if (charCode == rk.charCodeAt(0) && (i + rk.length) <= str.length) {
+                        match = true;
+                        for (var j:int = 1; j < rk.length; ++j) {
+                            if (str.charCodeAt(i + j) != rk.charCodeAt(j)) {
+                                match = false;
+                                break;
+                            }
+                        }
+
+                        if (match) {
+                            // split the source from i to the end.
+                            splits.push(str.substr(lastIdx, i - lastIdx));
+                            splits.push(replaceVars[rk]);
+                            lastIdx = i + rk.length;
+                        }
+                    }
+                }
             }
-            fragSource = fragSource.replace(new RegExp(rk, 'g'), replaceVars[rk]);
-            replaced = true;
+
+            if (lastIdx < str.length)
+                splits.push(str.substr(lastIdx, str.length - lastIdx));
+
+            fragSource = splits.join('');
+        }
+
+        for (var rvKey:* in replaceVars) {
+            CONFIG::debug {
+                if (log2) log2.send("Syncing fragment shader's varying " + rvKey + " into vertex shader's varying " + replaceVars[rvKey] + "\n");
+            }
         }
 
         CONFIG::debug {
-            if (replaced && log2) {
+            if (replaceNeeded && log2) {
                 log2.send("Post processing fragment shader's source: \n" + fragSource + "\n");
             }
         }
